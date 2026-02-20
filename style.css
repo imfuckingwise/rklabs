@@ -92,6 +92,8 @@ h1 {
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
+  overflow-x: auto;
+  white-space: nowrap;
 }
 
 .nav-btn {
@@ -351,7 +353,7 @@ button.danger {
 .kpi-grid {
   margin-top: 14px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -372,6 +374,10 @@ button.danger {
   margin: 10px 0 0;
   font-size: 28px;
   letter-spacing: 0.02em;
+}
+
+.kpi-conv-latest h3 {
+  color: #c9f56f;
 }
 
 .kpi-conv h3 {
@@ -410,6 +416,10 @@ button.danger {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.chart-controls .ghost {
+  height: 36px;
 }
 
 .chart-toggle {
@@ -488,6 +498,7 @@ button.danger {
 
 .table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 table {
@@ -670,14 +681,61 @@ button.ghost {
 }
 
 @media (max-width: 720px) {
+  body {
+    overflow-x: hidden;
+  }
+
   .topbar,
   .container {
     padding-left: 14px;
     padding-right: 14px;
+    max-width: none;
+    width: 100%;
+  }
+
+  .topbar {
+    gap: 10px;
+    padding-top: 16px;
+  }
+
+  .app-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    gap: 6px;
+    white-space: normal;
+    overflow: visible;
+  }
+
+  .nav-btn {
+    min-width: 0;
+    height: 34px;
+    padding: 0 8px;
+    font-size: 11px;
   }
 
   .save-panel {
     padding: 16px;
+  }
+
+  .save-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .role-label {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .role-label input {
+    width: 100%;
+  }
+
+  .search-label input {
+    width: 100%;
   }
 
   .grid-4,
@@ -685,11 +743,150 @@ button.ghost {
     grid-template-columns: 1fr;
   }
 
-  h1 {
+  .app-page.active {
+    gap: 12px;
+  }
+
+  #dashboardPage .panel {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  #dashboardPage h2 {
+    font-size: 18px;
+    margin-bottom: 10px;
+  }
+
+  #dashboardPage .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  #dashboardPage .actions button {
+    min-width: 0;
+    width: 100%;
+  }
+
+  #dashboardPage .chart-header {
+    gap: 8px;
+  }
+
+  #dashboardPage .chart-controls {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  #dashboardPage .chart-toggle {
+    justify-content: center;
+  }
+
+  #dashboardPage .chart-controls .ghost {
+    width: 100%;
+  }
+
+  #dashboardPage .table-tools {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  #dashboardPage .table-tools .search-label {
+    grid-column: 1 / -1;
+  }
+
+  #dashboardPage .table-tools > * {
+    min-width: 0;
+  }
+
+  #dashboardPage .kpi-card h3 {
     font-size: 30px;
   }
 
+  .table-wrap {
+    overflow: visible;
+  }
+
+  .table-wrap table {
+    min-width: 0;
+  }
+
+  .table-wrap thead {
+    display: none;
+  }
+
+  .table-wrap tbody,
+  .table-wrap tr,
+  .table-wrap td {
+    display: block;
+    width: 100%;
+  }
+
+  .table-wrap tr {
+    background: rgba(14, 20, 34, 0.88);
+    border: 1px solid #2a3653;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    padding: 8px;
+  }
+
+  .table-wrap td {
+    border-bottom: 1px dashed #2a3653;
+    padding: 6px 4px;
+    font-size: 12px;
+    display: grid;
+    grid-template-columns: 78px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+  }
+
+  .table-wrap td::before {
+    content: attr(data-label);
+    color: #8ea1cf;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .table-wrap td:last-child {
+    border-bottom: 0;
+  }
+
+  .table-wrap td[colspan] {
+    display: block;
+    border-bottom: 0;
+    padding: 8px 4px;
+  }
+
+  .table-wrap td[colspan]::before {
+    content: none;
+  }
+
+  .table-wrap td.row-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    padding-top: 8px;
+  }
+
+  .table-wrap td.row-actions::before {
+    content: none;
+  }
+
+  .table-wrap td.row-actions button {
+    min-width: 52px;
+    height: 28px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  h1 {
+    font-size: 28px;
+  }
+
   #trendCanvas {
-    height: 360px;
+    height: 270px;
   }
 }

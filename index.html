@@ -125,8 +125,12 @@
         </div>
 
         <div class="kpi-grid">
+          <article class="kpi-card kpi-conv-latest">
+            <p>最新轉換率</p>
+            <h3 id="latestConversion">--</h3>
+          </article>
           <article class="kpi-card kpi-conv">
-            <p>平均轉換率</p>
+            <p>區間平均轉換率</p>
             <h3 id="avgConversion">--</h3>
           </article>
           <article class="kpi-card kpi-th">
@@ -151,6 +155,7 @@
               <input id="showNoteLines" type="checkbox" checked />
               顯示備註事件線
             </label>
+            <button id="exportPdfBtn" type="button" class="ghost">匯出 PDF 報告</button>
             <button id="resetZoomBtn" type="button" class="ghost">重設縮放</button>
           </div>
         </div>
@@ -306,6 +311,7 @@
   <script src="vendor/chart.umd.min.js"></script>
   <script src="vendor/hammer.min.js"></script>
   <script src="vendor/chartjs-plugin-zoom.min.js"></script>
+  <script src="vendor/jspdf.umd.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

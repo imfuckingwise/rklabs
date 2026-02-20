@@ -4,14 +4,19 @@
 - 跨平台增長儀表板（Threads / LINE）
 - 內容素材庫（可記錄人設、Prompt、腳本與其他資訊）
 - 全平台 JSON 存檔（匯出 / 載入）
+- 跨平台增長 PDF 報告（一鍵匯出）
 
 ## 功能總覽
 
 ### 1) 跨平台增長儀表板
 - 新增 / 編輯 / 刪除紀錄
 - 欄位：時間、Threads、LINE、備註
-- KPI：平均轉換率、Threads 增長率、LINE 增長率
+- KPI：最新轉換率、區間平均轉換率、Threads 增長率、LINE 增長率
 - 圖表：雙 Y 軸、縮放/平移、點擊定位表格
+- 一鍵匯出 PDF 報告（中文內容）
+  - 內容包含：角色編號、統計區間、KPI（最新轉換率與區間平均轉換率）、趨勢圖、最新紀錄表格
+  - 紀錄為可視化表格（欄位、格線、分頁）
+  - 若字型載入失敗，會自動改用離線畫布方式匯出，不中斷流程
 - 備註事件線：
   - 全域開關
   - 每筆可獨立開關
@@ -34,6 +39,9 @@
 
 ### 3) 全平台存檔
 - 角色編號為必填，未填不得匯出
+- 匯出檔名格式（可排序）：
+  - JSON：`角色編號_全平台存檔_YYYY-MM-DD_HH-mm-ss.json`
+  - PDF：`角色編號_跨平台增長報告_YYYY-MM-DD_HH-mm-ss.pdf`
 - 載入前會：
   - 先檢查是否有未存檔變更
   - 詢問是否先匯出
@@ -49,11 +57,12 @@
 - `vendor/chart.umd.min.js`：Chart.js
 - `vendor/chartjs-plugin-zoom.min.js`：Chart.js zoom plugin
 - `vendor/hammer.min.js`：手勢支援
+- `vendor/jspdf.umd.min.js`：PDF 匯出
 
 ## 啟動方式
 
 ```bash
-cd /Users/wise/Documents/rklabs
+cd /Users/wise/Documents/rklabs/rklabs
 python3 -m http.server 5173 --bind 127.0.0.1
 ```
 
@@ -100,6 +109,7 @@ python3 -m http.server 5173 --bind 127.0.0.1
 - 主要檔案可正常回應（`index.html` / `app.js` / `style.css` / vendor assets）
 - DOM 關鍵 ID 與事件綁定對應檢查
 - 匯入/匯出、雙模組資料流與清空匯入流程靜態檢查
+- PDF 匯出流程靜態檢查（含中文字型路徑與離線降級流程）
 
 ## 備註
 

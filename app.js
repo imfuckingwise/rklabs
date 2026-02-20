@@ -2,6 +2,8 @@ const DB_NAME = "AiKOLTrackerDB";
 const DB_VERSION = 2;
 const RECORD_STORE_NAME = "records";
 const CONTENT_STORE_NAME = "contentItems";
+const PDF_CHINESE_FONT_URL =
+  "https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoSansTC/NotoSansTC-Regular.ttf";
 
 const state = {
   records: [],
@@ -36,11 +38,13 @@ const els = {
   startDate: document.getElementById("startDate"),
   endDate: document.getElementById("endDate"),
   applyRangeBtn: document.getElementById("applyRangeBtn"),
+  latestConversion: document.getElementById("latestConversion"),
   avgConversion: document.getElementById("avgConversion"),
   threadsGrowth: document.getElementById("threadsGrowth"),
   lineGrowth: document.getElementById("lineGrowth"),
   trendCanvas: document.getElementById("trendCanvas"),
   showNoteLines: document.getElementById("showNoteLines"),
+  exportPdfBtn: document.getElementById("exportPdfBtn"),
   resetZoomBtn: document.getElementById("resetZoomBtn"),
   sortOrderSelect: document.getElementById("sortOrderSelect"),
   roleIdInput: document.getElementById("roleIdInput"),
@@ -75,6 +79,7 @@ const els = {
 
 let db;
 let trendChart;
+let pdfChineseFontBase64 = "";
 
 init();
 
@@ -211,6 +216,7 @@ function wireEvents() {
     persistNoteLineSetting(state.showNoteLines);
     render();
   });
+  els.exportPdfBtn.addEventListener("click", onExportPdfReport);
   els.sortOrderSelect.addEventListener("change", () => {
     state.sortOrder = els.sortOrderSelect.value;
     persistSortOrder(state.sortOrder);
@@ -354,11 +360,112 @@ function onExport() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${buildExportPrefix(roleId)}-${formatFileDateTime(new Date())}.json`;
+  a.download = buildJsonExportFilename(roleId, new Date());
   a.click();
   URL.revokeObjectURL(url);
   markDataSaved();
   return true;
+}
+
+async function onExportPdfReport() {
+  const roleId = sanitizeRoleId(state.roleId);
+  if (!roleId) {
+    alert("請先填寫角色編號，才能匯出 PDF 報告。");
+    els.roleIdInput.focus();
+    return;
+  }
+
+  const JsPdf = window.jspdf?.jsPDF;
+  if (!JsPdf) {
+    alert("PDF 匯出元件未載入，請重新整理頁面後再試。");
+    return;
+  }
+
+  const visible = filterByRange(state.records, state.range).sort((a, b) => a.timestamp - b.timestamp);
+  if (!visible.length) {
+    alert("目前區間沒有資料，無法產生 PDF 報告。");
+    return;
+  }
+
+  const kpi = computeKpiForReport(visible);
+  const rangeLabel = buildRangeLabel(visible);
+
+  const doc = new JsPdf({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+  });
+  const fontReady = await ensurePdfChineseFont(doc);
+  const fileName = buildPdfReportFilename(roleId, new Date());
+  if (!fontReady) {
+    const imageReport = await buildCanvasReportImage({
+      roleId,
+      rangeLabel,
+      kpi,
+      records: visible,
+      chartDataUrl: getChartDataUrl(),
+    });
+    if (!imageReport) {
+      alert("PDF 匯出失敗，請稍後再試。");
+      return;
+    }
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    doc.addImage(imageReport, "PNG", 0, 0, pageW, pageH);
+    doc.save(fileName);
+    return;
+  }
+  doc.setFont("NotoSansTC", "normal");
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 12;
+  let y = margin;
+
+  doc.setFontSize(16);
+  doc.text("跨平台增長 PDF 報告", margin, y);
+  y += 7;
+
+  doc.setFontSize(10);
+  doc.text(`角色編號：${roleId}`, margin, y);
+  y += 5;
+  doc.text(`產生時間：${formatDisplayWithSeconds(new Date())}`, margin, y);
+  y += 5;
+  doc.text(`統計區間：${rangeLabel}`, margin, y);
+  y += 7;
+
+  doc.setFontSize(11);
+  doc.text("績效摘要", margin, y);
+  y += 5;
+  doc.text(`最新轉換率：${formatPercent(kpi.latestConversion)}`, margin, y);
+  y += 5;
+  doc.text(`區間平均轉換率：${formatPercent(kpi.avgConversion)}`, margin, y);
+  y += 5;
+  doc.text(`Threads 增長率：${formatSignedPercent(kpi.threadsGrowth)}`, margin, y);
+  y += 5;
+  doc.text(`LINE 增長率：${formatSignedPercent(kpi.lineGrowth)}`, margin, y);
+  y += 7;
+
+  const chartDataUrl = getChartDataUrl();
+  if (chartDataUrl) {
+    doc.text("趨勢圖", margin, y);
+    y += 4;
+    const chartW = pageW - margin * 2;
+    const chartH = 86;
+    doc.addImage(chartDataUrl, "PNG", margin, y, chartW, chartH);
+    y += chartH + 7;
+  }
+
+  doc.text("最新紀錄", margin, y);
+  y += 4;
+  drawPdfRecordsTable(doc, {
+    records: [...visible].reverse().slice(0, 24),
+    startY: y,
+    margin,
+    pageW,
+    pageH,
+  });
+
+  doc.save(fileName);
 }
 
 async function onImport(event) {
@@ -496,12 +603,23 @@ function renderTable(records) {
     const row = els.rowTemplate.content.firstElementChild.cloneNode(true);
     row.classList.add("record-row");
     row.dataset.recordId = String(record.id);
-    row.querySelector('[data-col="dt"]').textContent = record.datetime;
-    row.querySelector('[data-col="threads"]').textContent = String(record.threads);
-    row.querySelector('[data-col="line"]').textContent = Number.isFinite(record.line) ? String(record.line) : "-";
-    row.querySelector('[data-col="conversion"]').textContent = formatPercent(safeRatio(record.line, record.threads));
-    row.querySelector('[data-col="note"]').textContent = record.note || "-";
+    const dtCell = row.querySelector('[data-col="dt"]');
+    const threadsCell = row.querySelector('[data-col="threads"]');
+    const lineCell = row.querySelector('[data-col="line"]');
+    const conversionCell = row.querySelector('[data-col="conversion"]');
+    const noteCell = row.querySelector('[data-col="note"]');
+    dtCell.textContent = record.datetime;
+    threadsCell.textContent = String(record.threads);
+    lineCell.textContent = Number.isFinite(record.line) ? String(record.line) : "-";
+    conversionCell.textContent = formatPercent(safeRatio(record.line, record.threads));
+    noteCell.textContent = record.note || "-";
+    dtCell.dataset.label = "時間";
+    threadsCell.dataset.label = "Threads";
+    lineCell.dataset.label = "LINE";
+    conversionCell.dataset.label = "轉換率";
+    noteCell.dataset.label = "備註";
     const noteLineCell = row.querySelector('[data-col="noteLine"]');
+    noteLineCell.dataset.label = "事件線";
     if ((record.note || "").trim().length > 0) {
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
@@ -513,6 +631,8 @@ function renderTable(records) {
     } else {
       noteLineCell.textContent = "-";
     }
+    const actionCell = row.querySelector(".row-actions");
+    actionCell.dataset.label = "操作";
     row.querySelector('[data-action="edit"]').dataset.id = String(record.id);
     row.querySelector('[data-action="delete"]').dataset.id = String(record.id);
     els.recordTableBody.appendChild(row);
@@ -530,10 +650,12 @@ function renderKpi(records) {
   const conversions = sorted
     .map((r) => safeRatio(r.line, r.threads))
     .filter((v) => Number.isFinite(v));
+  const latestConvertible = [...sorted].reverse().find((r) => Number.isFinite(safeRatio(r.line, r.threads)));
 
   const avgConversion = conversions.length
     ? conversions.reduce((sum, val) => sum + val, 0) / conversions.length
     : NaN;
+  const latestConversion = latestConvertible ? safeRatio(latestConvertible.line, latestConvertible.threads) : NaN;
 
   const first = sorted[0];
   const last = sorted[sorted.length - 1];
@@ -543,6 +665,7 @@ function renderKpi(records) {
   const threadsGrowth = first && last ? computeGrowthRateWithFloor(first.threads, last.threads, 1) : NaN;
   const lineGrowth = firstLine && lastLine ? computeGrowthRate(firstLine.line, lastLine.line) : NaN;
 
+  els.latestConversion.textContent = formatPercent(latestConversion);
   els.avgConversion.textContent = formatPercent(avgConversion);
   els.threadsGrowth.textContent = formatSignedPercent(threadsGrowth);
   els.lineGrowth.textContent = formatSignedPercent(lineGrowth);
@@ -1049,6 +1172,16 @@ function formatFileDateTime(date) {
   return `${y}${mo}${d}-${h}${mi}${s}`;
 }
 
+function formatReadableFileDateTime(date) {
+  const y = date.getFullYear();
+  const mo = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const h = String(date.getHours()).padStart(2, "0");
+  const mi = String(date.getMinutes()).padStart(2, "0");
+  const s = String(date.getSeconds()).padStart(2, "0");
+  return `${y}-${mo}-${d}_${h}-${mi}-${s}`;
+}
+
 function parseTsWithSpace(ts) {
   if (typeof ts !== "string") return null;
   const match = ts.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
@@ -1201,6 +1334,263 @@ function computeGrowthRateWithFloor(start, end, floor) {
   return (end - start) / base;
 }
 
+function computeKpiForReport(records) {
+  const sorted = [...records].sort((a, b) => a.timestamp - b.timestamp);
+  const conversions = sorted
+    .map((r) => safeRatio(r.line, r.threads))
+    .filter((v) => Number.isFinite(v));
+  const latestConvertible = [...sorted].reverse().find((r) => Number.isFinite(safeRatio(r.line, r.threads)));
+  const avgConversion = conversions.length
+    ? conversions.reduce((sum, val) => sum + val, 0) / conversions.length
+    : NaN;
+  const latestConversion = latestConvertible ? safeRatio(latestConvertible.line, latestConvertible.threads) : NaN;
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const firstLine = sorted.find((r) => Number.isFinite(r.line));
+  const lastLine = [...sorted].reverse().find((r) => Number.isFinite(r.line));
+  const threadsGrowth = first && last ? computeGrowthRateWithFloor(first.threads, last.threads, 1) : NaN;
+  const lineGrowth = firstLine && lastLine ? computeGrowthRate(firstLine.line, lastLine.line) : NaN;
+  return { latestConversion, avgConversion, threadsGrowth, lineGrowth };
+}
+
+function buildRangeLabel(records) {
+  if (!records.length) return "-";
+  const first = records[0];
+  const last = records[records.length - 1];
+  return `${first.datetime} ~ ${last.datetime}`;
+}
+
+function getChartDataUrl() {
+  if (!els.trendCanvas) return "";
+  if (trendChart && typeof trendChart.toBase64Image === "function") {
+    return trendChart.toBase64Image("image/png", 1);
+  }
+  try {
+    return els.trendCanvas.toDataURL("image/png", 1);
+  } catch {
+    return "";
+  }
+}
+
+async function ensurePdfChineseFont(doc) {
+  try {
+    if (!pdfChineseFontBase64) {
+      const resp = await fetch(PDF_CHINESE_FONT_URL);
+      if (!resp.ok) return false;
+      const buf = await resp.arrayBuffer();
+      pdfChineseFontBase64 = arrayBufferToBase64(buf);
+    }
+    doc.addFileToVFS("NotoSansTC-Regular.ttf", pdfChineseFontBase64);
+    doc.addFont("NotoSansTC-Regular.ttf", "NotoSansTC", "normal");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function arrayBufferToBase64(buffer) {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const sub = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...sub);
+  }
+  return btoa(binary);
+}
+
+async function buildCanvasReportImage({ roleId, rangeLabel, kpi, records, chartDataUrl }) {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1240;
+    canvas.height = 1754;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "bold 44px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+    ctx.fillText("跨平台增長 PDF 報告", 52, 76);
+
+    ctx.font = "24px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+    ctx.fillStyle = "#334155";
+    ctx.fillText(`角色編號：${roleId}`, 52, 124);
+    ctx.fillText(`產生時間：${formatDisplayWithSeconds(new Date())}`, 52, 160);
+    ctx.fillText(`統計區間：${rangeLabel}`, 52, 196);
+
+    ctx.fillStyle = "#111827";
+    ctx.font = "bold 30px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+    ctx.fillText("績效摘要", 52, 252);
+    ctx.font = "24px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+    ctx.fillText(`最新轉換率：${formatPercent(kpi.latestConversion)}`, 52, 294);
+    ctx.fillText(`區間平均轉換率：${formatPercent(kpi.avgConversion)}`, 52, 328);
+    ctx.fillText(`Threads 增長率：${formatSignedPercent(kpi.threadsGrowth)}`, 52, 362);
+    ctx.fillText(`LINE 增長率：${formatSignedPercent(kpi.lineGrowth)}`, 52, 396);
+
+    let y = 430;
+    if (chartDataUrl) {
+      const chartImg = await loadImage(chartDataUrl);
+      if (chartImg) {
+        ctx.fillStyle = "#111827";
+        ctx.font = "bold 30px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+        ctx.fillText("趨勢圖", 52, y);
+        y += 14;
+        const chartX = 52;
+        const chartY = y;
+        const chartW = canvas.width - 104;
+        const chartH = 520;
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillRect(chartX, chartY, chartW, chartH);
+        ctx.strokeStyle = "#cbd5e1";
+        ctx.strokeRect(chartX, chartY, chartW, chartH);
+        ctx.drawImage(chartImg, chartX, chartY, chartW, chartH);
+        y += chartH + 54;
+      }
+    }
+
+    ctx.fillStyle = "#111827";
+    ctx.font = "bold 30px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+    ctx.fillText("最新紀錄", 52, y);
+    y += 20;
+    drawCanvasRecordsTable(ctx, {
+      x: 52,
+      y,
+      width: canvas.width - 104,
+      maxRows: 16,
+      records: [...records].reverse(),
+    });
+    return canvas.toDataURL("image/png", 1);
+  } catch {
+    return "";
+  }
+}
+
+async function loadImage(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+function drawPdfRecordsTable(doc, { records, startY, margin, pageW, pageH }) {
+  const headers = ["時間", "Threads", "LINE", "轉換率", "備註"];
+  const colWidths = [38, 22, 20, 24, pageW - margin * 2 - 104];
+  const rowH = 7;
+  let y = startY;
+
+  const drawHeader = () => {
+    doc.setFillColor(238, 243, 255);
+    doc.rect(margin, y, pageW - margin * 2, rowH, "F");
+    doc.setDrawColor(148, 163, 184);
+    doc.rect(margin, y, pageW - margin * 2, rowH);
+    doc.setFontSize(9);
+    let x = margin;
+    for (let i = 0; i < headers.length; i += 1) {
+      doc.text(headers[i], x + 2, y + 4.8);
+      x += colWidths[i];
+      if (i < headers.length - 1) {
+        doc.line(x, y, x, y + rowH);
+      }
+    }
+    y += rowH;
+  };
+
+  drawHeader();
+  doc.setFontSize(8.5);
+  doc.setDrawColor(203, 213, 225);
+  for (const record of records) {
+    if (y + rowH > pageH - margin) {
+      doc.addPage();
+      y = margin;
+      doc.setFont("NotoSansTC", "normal");
+      drawHeader();
+      doc.setFontSize(8.5);
+      doc.setDrawColor(203, 213, 225);
+    }
+    const note = (record.note || "").trim() ? shortenText(record.note.trim(), 18) : "-";
+    const cells = [
+      record.datetime,
+      String(record.threads),
+      Number.isFinite(record.line) ? String(record.line) : "-",
+      formatPercent(safeRatio(record.line, record.threads)),
+      note,
+    ];
+    let x = margin;
+    for (let i = 0; i < cells.length; i += 1) {
+      const text = shortenText(cells[i], i === 0 ? 16 : i === 4 ? 18 : 10);
+      doc.text(text, x + 2, y + 4.8);
+      x += colWidths[i];
+      if (i < cells.length - 1) {
+        doc.line(x, y, x, y + rowH);
+      }
+    }
+    doc.rect(margin, y, pageW - margin * 2, rowH);
+    y += rowH;
+  }
+}
+
+function drawCanvasRecordsTable(ctx, { x, y, width, maxRows, records }) {
+  const headers = ["時間", "Threads", "LINE", "轉換率", "備註"];
+  const colRatios = [0.28, 0.13, 0.1, 0.14, 0.35];
+  const colWidths = colRatios.map((r) => Math.floor(width * r));
+  colWidths[colWidths.length - 1] = width - colWidths.slice(0, -1).reduce((a, b) => a + b, 0);
+  const rowH = 34;
+
+  ctx.fillStyle = "#e2e8f0";
+  ctx.fillRect(x, y, width, rowH);
+  ctx.strokeStyle = "#94a3b8";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, width, rowH);
+  ctx.font = "bold 20px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+  ctx.fillStyle = "#0f172a";
+
+  let cx = x;
+  for (let i = 0; i < headers.length; i += 1) {
+    ctx.fillText(headers[i], cx + 10, y + 23);
+    cx += colWidths[i];
+    if (i < headers.length - 1) {
+      ctx.beginPath();
+      ctx.moveTo(cx, y);
+      ctx.lineTo(cx, y + rowH);
+      ctx.stroke();
+    }
+  }
+
+  const rows = records.slice(0, maxRows);
+  ctx.font = "18px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+  rows.forEach((record, idx) => {
+    const rowY = y + rowH * (idx + 1);
+    ctx.fillStyle = idx % 2 === 0 ? "#ffffff" : "#f8fafc";
+    ctx.fillRect(x, rowY, width, rowH);
+    ctx.strokeStyle = "#cbd5e1";
+    ctx.strokeRect(x, rowY, width, rowH);
+
+    const cells = [
+      record.datetime,
+      String(record.threads),
+      Number.isFinite(record.line) ? String(record.line) : "-",
+      formatPercent(safeRatio(record.line, record.threads)),
+      (record.note || "").trim() ? shortenText(record.note.trim(), 18) : "-",
+    ];
+    let cellX = x;
+    ctx.fillStyle = "#1e293b";
+    for (let i = 0; i < cells.length; i += 1) {
+      const maxChars = i === 0 ? 16 : i === 4 ? 18 : 10;
+      ctx.fillText(shortenText(cells[i], maxChars), cellX + 10, rowY + 22);
+      cellX += colWidths[i];
+      if (i < cells.length - 1) {
+        ctx.beginPath();
+        ctx.moveTo(cellX, rowY);
+        ctx.lineTo(cellX, rowY + rowH);
+        ctx.stroke();
+      }
+    }
+  });
+}
+
 function sortRecordsForTable(records, sortOrder) {
   const sorted = [...records];
   if (sortOrder === "time_asc") {
@@ -1214,6 +1604,16 @@ function sortRecordsForTable(records, sortOrder) {
 function buildExportPrefix(roleId) {
   const safe = sanitizeRoleId(roleId);
   return safe ? `${safe}-records` : "records";
+}
+
+function buildJsonExportFilename(roleId, date) {
+  const safe = sanitizeRoleId(roleId) || "Amy";
+  return `${safe}_全平台存檔_${formatReadableFileDateTime(date)}.json`;
+}
+
+function buildPdfReportFilename(roleId, date) {
+  const safe = sanitizeRoleId(roleId) || "Amy";
+  return `${safe}_跨平台增長報告_${formatReadableFileDateTime(date)}.pdf`;
 }
 
 function sanitizeRoleId(value) {
@@ -1346,12 +1746,22 @@ function renderContentTable(items) {
     if (item.id === state.contentViewingId) {
       row.classList.add("is-focused");
     }
-    row.querySelector('[data-col="title"]').textContent = item.title || "-";
-    row.querySelector('[data-col="type"]').textContent = item.type || "-";
-    row.querySelector('[data-col="tags"]').textContent = item.tags || "-";
-    row.querySelector('[data-col="updated"]').textContent = item.updatedAt
+    const titleCell = row.querySelector('[data-col="title"]');
+    const typeCell = row.querySelector('[data-col="type"]');
+    const tagsCell = row.querySelector('[data-col="tags"]');
+    const updatedCell = row.querySelector('[data-col="updated"]');
+    titleCell.textContent = item.title || "-";
+    typeCell.textContent = item.type || "-";
+    tagsCell.textContent = item.tags || "-";
+    updatedCell.textContent = item.updatedAt
       ? formatDisplayDateTime(new Date(item.updatedAt))
       : "-";
+    titleCell.dataset.label = "名稱";
+    typeCell.dataset.label = "類型";
+    tagsCell.dataset.label = "標籤";
+    updatedCell.dataset.label = "更新時間";
+    const actionCell = row.querySelector(".row-actions");
+    actionCell.dataset.label = "操作";
     row.querySelector('[data-action="view-content"]').dataset.id = String(item.id);
     row.querySelector('[data-action="edit-content"]').dataset.id = String(item.id);
     row.querySelector('[data-action="delete-content"]').dataset.id = String(item.id);
