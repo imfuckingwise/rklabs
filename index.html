@@ -148,7 +148,7 @@
       <section class="panel chart-panel">
         <div class="chart-header">
           <div>
-            <h2>Follower Growth Timeline</h2>
+            <h2>粉絲增長趨勢圖</h2>
             <p>雙軸趨勢圖（滾輪縮放、拖拉框選縮放、Shift+拖曳平移）</p>
           </div>
           <div class="chart-controls">
@@ -203,67 +203,8 @@
     </section>
 
     <section id="contentPage" class="app-page" data-page="content">
-      <section class="panel form-panel">
-        <h2 id="contentFormTitle">新增素材</h2>
-        <form id="contentForm">
-          <div class="grid-4">
-            <label>
-              項目名稱
-              <input id="contentTitleInput" type="text" maxlength="80" placeholder="例如：Amy 人設 v2" required />
-            </label>
-            <label>
-              類型
-              <input id="contentTypeInput" type="text" maxlength="50" placeholder="例如：人設 / Prompt / 腳本 / 備忘" />
-            </label>
-            <label>
-              標籤
-              <input id="contentTagsInput" type="text" maxlength="80" placeholder="例如：amy, threads, 轉換" />
-            </label>
-            <label>
-              參考連結（可空）
-              <input id="contentRefInput" type="text" maxlength="160" placeholder="例如：https://..." />
-            </label>
-          </div>
-          <label>
-            內容
-            <textarea id="contentBodyInput" rows="6" placeholder="可自由記錄任何內容..." required></textarea>
-          </label>
-          <div class="actions">
-            <button id="saveContentBtn" type="submit">儲存素材</button>
-            <button id="resetContentBtn" type="button" class="secondary">清空</button>
-          </div>
-        </form>
-      </section>
-
-      <section class="content-split">
-        <section class="panel table-panel">
-          <div class="table-head">
-            <h2>素材列表</h2>
-            <div class="table-tools">
-              <label class="search-label">
-                搜尋
-                <input id="contentSearchInput" type="text" placeholder="名稱 / 類型 / 標籤 / 內容" />
-              </label>
-              <button id="clearAllContentBtn" type="button" class="danger">全部刪除</button>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table class="content-table">
-              <thead>
-                <tr>
-                  <th>名稱</th>
-                  <th>類型</th>
-                  <th>標籤</th>
-                  <th>更新時間</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody id="contentTableBody"></tbody>
-            </table>
-          </div>
-        </section>
-
-        <section class="panel content-viewer-panel">
+      <section class="content-top-split">
+        <section class="panel content-viewer-panel content-viewer-standalone">
           <div class="content-viewer-head">
             <h2 id="contentViewerTitle">請先選擇素材</h2>
             <p id="contentViewerMeta">-</p>
@@ -276,6 +217,65 @@
           </p>
           <article class="content-viewer-body" id="contentViewerBody">尚未選擇任何素材。</article>
         </section>
+
+        <section class="panel form-panel content-form-panel">
+          <h2 id="contentFormTitle">新增素材</h2>
+          <form id="contentForm">
+            <div class="grid-4">
+              <label>
+                項目名稱
+                <input id="contentTitleInput" type="text" maxlength="80" placeholder="例如：Amy 人設 v2" required />
+              </label>
+              <label>
+                類型
+                <input id="contentTypeInput" type="text" maxlength="50" placeholder="例如：人設 / Prompt / 腳本 / 備忘" />
+              </label>
+              <label>
+                標籤
+                <input id="contentTagsInput" type="text" maxlength="80" placeholder="例如：amy, threads, 轉換" />
+              </label>
+              <label>
+                參考連結（可空）
+                <input id="contentRefInput" type="text" maxlength="2048" placeholder="例如：https://..." />
+              </label>
+            </div>
+            <label>
+              內容
+              <textarea id="contentBodyInput" rows="6" placeholder="可自由記錄任何內容..." required></textarea>
+            </label>
+            <div class="actions">
+              <button id="saveContentBtn" type="submit">儲存素材</button>
+              <button id="resetContentBtn" type="button" class="secondary">清空</button>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section class="panel table-panel content-list-panel">
+        <div class="table-head">
+          <h2>素材列表</h2>
+          <div class="table-tools">
+            <label class="search-label">
+              搜尋
+              <input id="contentSearchInput" type="text" placeholder="名稱 / 類型 / 標籤 / 內容" />
+            </label>
+            <button id="clearAllContentBtn" type="button" class="danger">全部刪除</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="content-table">
+            <thead>
+              <tr>
+                <th>名稱</th>
+                <th>類型</th>
+                <th>標籤</th>
+                <th>更新時間</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="contentTableBody"></tbody>
+          </table>
+        </div>
       </section>
     </section>
   </main>

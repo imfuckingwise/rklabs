@@ -2,6 +2,7 @@ const DB_NAME = "AiKOLTrackerDB";
 const DB_VERSION = 2;
 const RECORD_STORE_NAME = "records";
 const CONTENT_STORE_NAME = "contentItems";
+const CONTENT_REF_MAX_LEN = 2048;
 const PDF_CHINESE_FONT_URL =
   "https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoSansTC/NotoSansTC-Regular.ttf";
 
@@ -1362,7 +1363,7 @@ function normalizeImportedContentItems(rows) {
         title: title.slice(0, 80),
         type: (row?.type || "").toString().slice(0, 50),
         tags: (row?.tags || "").toString().slice(0, 80),
-        ref: (row?.ref || "").toString().slice(0, 160),
+        ref: (row?.ref || "").toString().slice(0, CONTENT_REF_MAX_LEN),
         body: body.slice(0, 6000),
         createdAt: row?.created_at || new Date().toISOString(),
         updatedAt: row?.updated_at || new Date().toISOString(),
@@ -1772,7 +1773,7 @@ async function onSaveContentItem(event) {
     title: title.slice(0, 80),
     type: type.slice(0, 50),
     tags: tags.slice(0, 80),
-    ref: ref.slice(0, 160),
+    ref: ref.slice(0, CONTENT_REF_MAX_LEN),
     body: body.slice(0, 6000),
     createdAt: existing?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),

@@ -497,7 +497,8 @@ button.danger {
 }
 
 .table-wrap {
-  overflow-x: auto;
+  max-height: 420px;
+  overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -551,17 +552,33 @@ td[data-col="body"] {
   word-break: break-word;
 }
 
-.content-split {
+.content-top-split {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  grid-template-columns: minmax(0, 1.38fr) minmax(0, 0.62fr);
   gap: 14px;
 }
 
+.content-list-panel {
+  min-height: 500px;
+}
+
 .content-viewer-panel {
-  min-height: 420px;
+  min-height: 500px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.content-viewer-standalone {
+  min-height: 560px;
+}
+
+.content-form-panel {
+  min-height: 500px;
+}
+
+.content-form-panel .grid-4 {
+  grid-template-columns: 1fr;
 }
 
 .content-viewer-head h2 {
@@ -581,6 +598,17 @@ td[data-col="body"] {
   margin: 0;
   color: #a9b7da;
   font-size: 12px;
+}
+
+.content-viewer-ref {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.content-viewer-ref a {
+  color: #8ea9ff;
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 .content-viewer-body {
@@ -671,7 +699,7 @@ button.ghost {
     grid-template-columns: 1fr;
   }
 
-  .content-split {
+  .content-top-split {
     grid-template-columns: 1fr;
   }
 
@@ -811,7 +839,8 @@ button.ghost {
   }
 
   .table-wrap {
-    overflow: visible;
+    max-height: 58vh;
+    overflow: auto;
   }
 
   .table-wrap table {
