@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 網紅工具台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">AI Influencer Toolkit</p>
+      <h1 id="pageTitle">工具總覽</h1>
+    </div>
+    <nav class="app-nav" aria-label="主導覽">
+      <button class="nav-btn" data-route="home" type="button">首頁</button>
+      <button class="nav-btn" data-route="dashboard" type="button">跨平台增長儀表板</button>
+      <button class="nav-btn" data-route="content" type="button">內容素材庫</button>
+    </nav>
+    <div class="storage-status" id="storageStatus"></div>
+  </header>
+
+  <main class="container">
+    <section class="panel save-panel">
+      <div class="save-head">
+        <h2>全平台存檔</h2>
+        <p class="save-last-edit">最後編輯時間：<span id="lastEditedAt">--</span></p>
+      </div>
+      <div class="save-actions">
+        <label class="role-label">
+          角色編號
+          <input id="roleIdInput" type="text" placeholder="例如 Amy" maxlength="30" />
+        </label>
+        <button id="exportBtn" type="button" class="secondary">存檔匯出</button>
+        <label class="import-label">
+          載入存檔
+          <input id="importInput" type="file" accept="application/json" />
+        </label>
+      </div>
+    </section>
+
+    <section id="homePage" class="app-page active" data-page="home">
+      <section class="panel hero-panel">
+        <h2>工具首頁</h2>
+        <p>這裡是你的 AI 網紅營運工具入口。之後可以持續新增更多頁面，例如貼文排程、內容模板、合作追蹤、素材管理。</p>
+      </section>
+
+      <section class="tool-grid">
+        <article class="panel tool-card actionable" data-route="dashboard">
+          <h3>跨平台增長儀表板</h3>
+          <p>追蹤 Threads 與 LINE，查看轉換率、增長曲線、事件標記與存檔。</p>
+          <button class="ghost" type="button">進入工具</button>
+        </article>
+        <article class="panel tool-card coming-soon">
+          <h3>貼文排程中心</h3>
+          <p>規劃發文節奏與活動檔期。</p>
+          <span>Coming Soon</span>
+        </article>
+        <article class="panel tool-card actionable" data-route="content">
+          <h3>內容素材庫</h3>
+          <p>記錄角色人設、Prompt、腳本、活動備註與任何營運資訊。</p>
+          <button class="ghost" type="button">進入素材庫</button>
+        </article>
+      </section>
+    </section>
+
+    <section id="dashboardPage" class="app-page" data-page="dashboard">
+      <section class="panel form-panel">
+        <h2 id="formTitle">新增紀錄</h2>
+        <form id="recordForm">
+          <div class="grid-4">
+            <label>
+              時間
+              <input id="datetimeInput" type="datetime-local" step="60" required />
+            </label>
+            <label>
+              Threads 人數（第一層）
+              <input id="threadsInput" type="number" min="0" step="1" required />
+            </label>
+            <label>
+              LINE 人數（第二層，可空）
+              <input id="lineInput" type="number" min="0" step="1" />
+            </label>
+            <label>
+              備註
+              <input id="noteInput" type="text" maxlength="120" placeholder="貼文、活動、合作..." />
+            </label>
+          </div>
+          <div class="actions">
+            <button id="saveRecordBtn" type="submit">儲存紀錄</button>
+            <button type="button" id="resetFormBtn" class="secondary">清空</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel filter-panel">
+        <div class="filter-head">
+          <h2>區間與績效</h2>
+          <div class="filter-row">
+            <label>
+              區間
+              <select id="rangeSelect">
+                <option value="today">今日</option>
+                <option value="7d">近 7 天</option>
+                <option value="30d" selected>近 30 天</option>
+                <option value="custom">自訂</option>
+              </select>
+            </label>
+            <label>
+              開始
+              <input id="startDate" type="datetime-local" disabled />
+            </label>
+            <label>
+              結束
+              <input id="endDate" type="datetime-local" disabled />
+            </label>
+            <button id="applyRangeBtn" type="button">套用</button>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <article class="kpi-card kpi-conv">
+            <p>平均轉換率</p>
+            <h3 id="avgConversion">--</h3>
+          </article>
+          <article class="kpi-card kpi-th">
+            <p>Threads 增長率</p>
+            <h3 id="threadsGrowth">--</h3>
+          </article>
+          <article class="kpi-card kpi-li">
+            <p>LINE 增長率</p>
+            <h3 id="lineGrowth">--</h3>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel chart-panel">
+        <div class="chart-header">
+          <div>
+            <h2>Follower Growth Timeline</h2>
+            <p>雙軸趨勢圖（滾輪縮放、拖拉框選縮放、Shift+拖曳平移）</p>
+          </div>
+          <div class="chart-controls">
+            <label class="chart-toggle">
+              <input id="showNoteLines" type="checkbox" checked />
+              顯示備註事件線
+            </label>
+            <button id="resetZoomBtn" type="button" class="ghost">重設縮放</button>
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="trendCanvas"></canvas>
+        </div>
+      </section>
+
+      <section class="panel table-panel">
+        <div class="table-head">
+          <h2>紀錄列表</h2>
+          <div class="table-tools">
+            <label class="search-label">
+              搜尋
+              <input id="recordSearchInput" type="text" placeholder="時間 / 備註 / 數值" />
+            </label>
+            <label class="sort-label">
+              排序
+              <select id="sortOrderSelect">
+                <option value="time_desc" selected>時間降冪</option>
+                <option value="time_asc">時間升冪</option>
+              </select>
+            </label>
+            <button id="clearAllRecordsBtn" type="button" class="danger">全部刪除</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>時間</th>
+                <th>Threads</th>
+                <th>LINE</th>
+                <th>轉換率</th>
+                <th>備註</th>
+                <th>事件線</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="recordTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <section id="contentPage" class="app-page" data-page="content">
+      <section class="panel form-panel">
+        <h2 id="contentFormTitle">新增素材</h2>
+        <form id="contentForm">
+          <div class="grid-4">
+            <label>
+              項目名稱
+              <input id="contentTitleInput" type="text" maxlength="80" placeholder="例如：Amy 人設 v2" required />
+            </label>
+            <label>
+              類型
+              <input id="contentTypeInput" type="text" maxlength="50" placeholder="例如：人設 / Prompt / 腳本 / 備忘" />
+            </label>
+            <label>
+              標籤
+              <input id="contentTagsInput" type="text" maxlength="80" placeholder="例如：amy, threads, 轉換" />
+            </label>
+            <label>
+              參考連結（可空）
+              <input id="contentRefInput" type="text" maxlength="160" placeholder="例如：https://..." />
+            </label>
+          </div>
+          <label>
+            內容
+            <textarea id="contentBodyInput" rows="6" placeholder="可自由記錄任何內容..." required></textarea>
+          </label>
+          <div class="actions">
+            <button id="saveContentBtn" type="submit">儲存素材</button>
+            <button id="resetContentBtn" type="button" class="secondary">清空</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="content-split">
+        <section class="panel table-panel">
+          <div class="table-head">
+            <h2>素材列表</h2>
+            <div class="table-tools">
+              <label class="search-label">
+                搜尋
+                <input id="contentSearchInput" type="text" placeholder="名稱 / 類型 / 標籤 / 內容" />
+              </label>
+              <button id="clearAllContentBtn" type="button" class="danger">全部刪除</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="content-table">
+              <thead>
+                <tr>
+                  <th>名稱</th>
+                  <th>類型</th>
+                  <th>標籤</th>
+                  <th>更新時間</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="contentTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel content-viewer-panel">
+          <div class="content-viewer-head">
+            <h2 id="contentViewerTitle">請先選擇素材</h2>
+            <p id="contentViewerMeta">-</p>
+          </div>
+          <p class="content-viewer-tags" id="contentViewerTags">-</p>
+          <p class="content-viewer-ref">
+            參考連結：
+            <a id="contentViewerRefLink" href="#" target="_blank" rel="noopener noreferrer"></a>
+            <span id="contentViewerRefEmpty">-</span>
+          </p>
+          <article class="content-viewer-body" id="contentViewerBody">尚未選擇任何素材。</article>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <template id="rowTemplate">
+    <tr>
+      <td data-col="dt"></td>
+      <td data-col="threads"></td>
+      <td data-col="line"></td>
+      <td data-col="conversion"></td>
+      <td data-col="note"></td>
+      <td data-col="noteLine"></td>
+      <td class="row-actions">
+        <button class="ghost" data-action="edit">編輯</button>
+        <button class="danger" data-action="delete">刪除</button>
+      </td>
+    </tr>
+  </template>
+
+  <template id="contentRowTemplate">
+    <tr>
+      <td data-col="title"></td>
+      <td data-col="type"></td>
+      <td data-col="tags"></td>
+      <td data-col="updated"></td>
+      <td class="row-actions">
+        <button class="ghost" data-action="view-content">查看</button>
+        <button class="ghost" data-action="edit-content">編輯</button>
+        <button class="danger" data-action="delete-content">刪除</button>
+      </td>
+    </tr>
+  </template>
+
+  <script src="vendor/chart.umd.min.js"></script>
+  <script src="vendor/hammer.min.js"></script>
+  <script src="vendor/chartjs-plugin-zoom.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
