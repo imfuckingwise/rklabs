@@ -398,20 +398,23 @@ async function onExportPdfReport() {
   const fontReady = await ensurePdfChineseFont(doc);
   const fileName = buildPdfReportFilename(roleId, new Date());
   if (!fontReady) {
-    const imageReport = await buildCanvasReportImage({
+    const imagePages = await buildCanvasReportPages({
       roleId,
       rangeLabel,
       kpi,
       records: visible,
       chartDataUrl: getChartDataUrl(),
     });
-    if (!imageReport) {
+    if (!imagePages.length) {
       alert("PDF 匯出失敗，請稍後再試。");
       return;
     }
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
-    doc.addImage(imageReport, "PNG", 0, 0, pageW, pageH);
+    imagePages.forEach((img, index) => {
+      if (index > 0) doc.addPage();
+      doc.addImage(img, "PNG", 0, 0, pageW, pageH);
+    });
     doc.save(fileName);
     return;
   }
@@ -455,10 +458,10 @@ async function onExportPdfReport() {
     y += chartH + 7;
   }
 
-  doc.text("最新紀錄", margin, y);
+  doc.text("紀錄", margin, y);
   y += 4;
   drawPdfRecordsTable(doc, {
-    records: [...visible].reverse().slice(0, 24),
+    records: [...visible].reverse(),
     startY: y,
     margin,
     pageW,
@@ -1399,70 +1402,87 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
-async function buildCanvasReportImage({ roleId, rangeLabel, kpi, records, chartDataUrl }) {
+async function buildCanvasReportPages({ roleId, rangeLabel, kpi, records, chartDataUrl }) {
   try {
-    const canvas = document.createElement("canvas");
-    canvas.width = 1240;
-    canvas.height = 1754;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return "";
+    const pages = [];
+    const remaining = [...records].reverse();
+    const chartImg = chartDataUrl ? await loadImage(chartDataUrl) : null;
+    let pageIndex = 0;
 
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#0f172a";
-    ctx.font = "bold 44px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
-    ctx.fillText("跨平台增長 PDF 報告", 52, 76);
+    while (remaining.length > 0 || pageIndex === 0) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1240;
+      canvas.height = 1754;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return [];
 
-    ctx.font = "24px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
-    ctx.fillStyle = "#334155";
-    ctx.fillText(`角色編號：${roleId}`, 52, 124);
-    ctx.fillText(`產生時間：${formatDisplayWithSeconds(new Date())}`, 52, 160);
-    ctx.fillText(`統計區間：${rangeLabel}`, 52, 196);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#0f172a";
 
-    ctx.fillStyle = "#111827";
-    ctx.font = "bold 30px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
-    ctx.fillText("績效摘要", 52, 252);
-    ctx.font = "24px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
-    ctx.fillText(`最新轉換率：${formatPercent(kpi.latestConversion)}`, 52, 294);
-    ctx.fillText(`區間平均轉換率：${formatPercent(kpi.avgConversion)}`, 52, 328);
-    ctx.fillText(`Threads 增長率：${formatSignedPercent(kpi.threadsGrowth)}`, 52, 362);
-    ctx.fillText(`LINE 增長率：${formatSignedPercent(kpi.lineGrowth)}`, 52, 396);
+      let y = 0;
+      if (pageIndex === 0) {
+        ctx.font = "bold 44px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+        ctx.fillText("跨平台增長 PDF 報告", 52, 76);
 
-    let y = 430;
-    if (chartDataUrl) {
-      const chartImg = await loadImage(chartDataUrl);
-      if (chartImg) {
+        ctx.font = "24px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+        ctx.fillStyle = "#334155";
+        ctx.fillText(`角色編號：${roleId}`, 52, 124);
+        ctx.fillText(`產生時間：${formatDisplayWithSeconds(new Date())}`, 52, 160);
+        ctx.fillText(`統計區間：${rangeLabel}`, 52, 196);
+
         ctx.fillStyle = "#111827";
         ctx.font = "bold 30px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
-        ctx.fillText("趨勢圖", 52, y);
-        y += 14;
-        const chartX = 52;
-        const chartY = y;
-        const chartW = canvas.width - 104;
-        const chartH = 520;
-        ctx.fillStyle = "#f8fafc";
-        ctx.fillRect(chartX, chartY, chartW, chartH);
-        ctx.strokeStyle = "#cbd5e1";
-        ctx.strokeRect(chartX, chartY, chartW, chartH);
-        ctx.drawImage(chartImg, chartX, chartY, chartW, chartH);
-        y += chartH + 54;
+        ctx.fillText("績效摘要", 52, 252);
+        ctx.font = "24px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+        ctx.fillText(`最新轉換率：${formatPercent(kpi.latestConversion)}`, 52, 294);
+        ctx.fillText(`區間平均轉換率：${formatPercent(kpi.avgConversion)}`, 52, 328);
+        ctx.fillText(`Threads 增長率：${formatSignedPercent(kpi.threadsGrowth)}`, 52, 362);
+        ctx.fillText(`LINE 增長率：${formatSignedPercent(kpi.lineGrowth)}`, 52, 396);
+
+        y = 430;
+        if (chartImg) {
+          ctx.fillStyle = "#111827";
+          ctx.font = "bold 30px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+          ctx.fillText("趨勢圖", 52, y);
+          y += 14;
+          const chartX = 52;
+          const chartY = y;
+          const chartW = canvas.width - 104;
+          const chartH = 520;
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillRect(chartX, chartY, chartW, chartH);
+          ctx.strokeStyle = "#cbd5e1";
+          ctx.strokeRect(chartX, chartY, chartW, chartH);
+          ctx.drawImage(chartImg, chartX, chartY, chartW, chartH);
+          y += chartH + 54;
+        }
+        ctx.fillStyle = "#111827";
+        ctx.font = "bold 30px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+        ctx.fillText("紀錄", 52, y);
+        y += 20;
+      } else {
+        ctx.font = "bold 36px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+        ctx.fillText("紀錄（續）", 52, 76);
+        y = 96;
       }
+
+      const drawn = drawCanvasRecordsTable(ctx, {
+        x: 52,
+        y,
+        width: canvas.width - 104,
+        records: remaining,
+        canvasHeight: canvas.height,
+      });
+      remaining.splice(0, drawn);
+      pages.push(canvas.toDataURL("image/png", 1));
+      if (drawn <= 0) break;
+      pageIndex += 1;
     }
 
-    ctx.fillStyle = "#111827";
-    ctx.font = "bold 30px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
-    ctx.fillText("最新紀錄", 52, y);
-    y += 20;
-    drawCanvasRecordsTable(ctx, {
-      x: 52,
-      y,
-      width: canvas.width - 104,
-      maxRows: 16,
-      records: [...records].reverse(),
-    });
-    return canvas.toDataURL("image/png", 1);
+    return pages;
   } catch {
-    return "";
+    return [];
   }
 }
 
@@ -1532,7 +1552,7 @@ function drawPdfRecordsTable(doc, { records, startY, margin, pageW, pageH }) {
   }
 }
 
-function drawCanvasRecordsTable(ctx, { x, y, width, maxRows, records }) {
+function drawCanvasRecordsTable(ctx, { x, y, width, records, canvasHeight }) {
   const headers = ["時間", "Threads", "LINE", "轉換率", "備註"];
   const colRatios = [0.28, 0.13, 0.1, 0.14, 0.35];
   const colWidths = colRatios.map((r) => Math.floor(width * r));
@@ -1559,6 +1579,7 @@ function drawCanvasRecordsTable(ctx, { x, y, width, maxRows, records }) {
     }
   }
 
+  const maxRows = Math.max(0, Math.floor((canvasHeight - (y + rowH) - 20) / rowH));
   const rows = records.slice(0, maxRows);
   ctx.font = "18px 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
   rows.forEach((record, idx) => {
@@ -1589,6 +1610,7 @@ function drawCanvasRecordsTable(ctx, { x, y, width, maxRows, records }) {
       }
     }
   });
+  return rows.length;
 }
 
 function sortRecordsForTable(records, sortOrder) {
