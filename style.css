@@ -734,6 +734,10 @@ button.ghost {
     width: 100%;
   }
 
+  #clearCacheBtn {
+    grid-column: 1 / -1;
+  }
+
   .search-label input {
     width: 100%;
   }

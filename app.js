@@ -55,6 +55,7 @@ const els = {
   rowTemplate: document.getElementById("rowTemplate"),
   exportBtn: document.getElementById("exportBtn"),
   importInput: document.getElementById("importInput"),
+  clearCacheBtn: document.getElementById("clearCacheBtn"),
   storageStatus: document.getElementById("storageStatus"),
   contentForm: document.getElementById("contentForm"),
   contentFormTitle: document.getElementById("contentFormTitle"),
@@ -211,6 +212,7 @@ function wireEvents() {
 
   els.exportBtn.addEventListener("click", onExport);
   els.importInput.addEventListener("change", onImport);
+  els.clearCacheBtn.addEventListener("click", onClearCache);
   els.showNoteLines.addEventListener("change", () => {
     state.showNoteLines = els.showNoteLines.checked;
     persistNoteLineSetting(state.showNoteLines);
@@ -538,6 +540,26 @@ async function onImport(event) {
     alert(`匯入失敗: ${err.message}`);
   } finally {
     event.target.value = "";
+  }
+}
+
+async function onClearCache() {
+  const ok = confirmTwice(
+    "將清除本機緩存與資料（包含紀錄、素材、篩選與離線快取），確定要繼續嗎？",
+    "最後確認：確定清除全部緩存？此操作無法復原。"
+  );
+  if (!ok) return;
+
+  try {
+    await clearAllData();
+    clearAppLocalStorage();
+    await clearBrowserCaches();
+    await unregisterAllServiceWorkers();
+    alert("已清除緩存，頁面將重新整理。");
+    window.location.reload();
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "未知錯誤";
+    alert(`清除緩存失敗：${reason}`);
   }
 }
 
@@ -1051,6 +1073,39 @@ function clearAllData() {
     txDb.oncomplete = () => resolve();
     txDb.onerror = () => reject(txDb.error);
   });
+}
+
+function clearAppLocalStorage() {
+  try {
+    const keys = Object.keys(localStorage);
+    keys.forEach((key) => {
+      if (key.startsWith("ai-kol-")) {
+        localStorage.removeItem(key);
+      }
+    });
+  } catch {
+    // Ignore storage access errors.
+  }
+}
+
+async function clearBrowserCaches() {
+  if (!("caches" in window)) return;
+  try {
+    const names = await caches.keys();
+    await Promise.all(names.map((name) => caches.delete(name)));
+  } catch {
+    // Ignore cache deletion errors.
+  }
+}
+
+async function unregisterAllServiceWorkers() {
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((reg) => reg.unregister()));
+  } catch {
+    // Ignore unregister errors.
+  }
 }
 
 function clearAllRecordsOnly() {
