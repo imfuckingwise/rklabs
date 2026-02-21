@@ -418,6 +418,9 @@ async function init() {
     state.funnelStages = await getAllFunnelStages();
   }
   state.funnelSnapshots = await getAllFunnelSnapshots();
+  await migrateLegacyRecordsToSnapshotsIfNeeded();
+  state.records = ensureRecordDefaults(await getAllRecords());
+  state.funnelSnapshots = await getAllFunnelSnapshots();
   state.kpiItems = ensureKpiDefaults(await getAllKpiItems());
   if (!state.lastEditedAt) {
     state.lastEditedAt = computeLastEditedAtFromData(
@@ -486,28 +489,16 @@ function wireEvents() {
     const target = e.target;
     if (!(target instanceof HTMLButtonElement)) return;
     const action = target.dataset.action;
-    const source = target.dataset.source === "funnel" ? "funnel" : "legacy";
     if (action === "edit") {
-      const id = Number(target.dataset.id);
-      if (!Number.isFinite(id)) return;
-      if (source === "funnel") {
-        goToFunnelSection();
-        alert("此紀錄來自漏斗快照，請在「資料管理中心」編輯或重建快照。");
-        return;
-      }
-      startEdit(id);
+      goToFunnelSection();
+      alert("此紀錄與快照為同一資料，請在「資料管理中心」編輯或重建快照。");
       return;
     }
     if (action === "delete") {
       const id = Number(target.dataset.id);
       if (!Number.isFinite(id)) return;
-      if (source === "funnel") {
-        await deleteFunnelSnapshot(id);
-        state.funnelSnapshots = await getAllFunnelSnapshots();
-      } else {
-        await deleteRecord(id);
-        state.records = ensureRecordDefaults(await getAllRecords());
-      }
+      await deleteFunnelSnapshot(id);
+      state.funnelSnapshots = await getAllFunnelSnapshots();
       if (state.editingId === id) resetFormMode();
       markDataEdited();
       render();
@@ -520,27 +511,14 @@ function wireEvents() {
     if (target.dataset.action !== "toggle-note-line") return;
     const id = Number(target.dataset.id);
     if (!Number.isFinite(id)) return;
-    const source = target.dataset.source === "funnel" ? "funnel" : "legacy";
-    if (source === "funnel") {
-      const snap = state.funnelSnapshots.find((x) => x.id === id);
-      if (!snap) return;
-      await putFunnelSnapshot({
-        ...snap,
-        noteLineEnabled: target.checked,
-        updatedAt: new Date().toISOString(),
-      });
-      state.funnelSnapshots = await getAllFunnelSnapshots();
-    } else {
-      const record = state.records.find((x) => x.id === id);
-      if (!record) return;
-      const updated = {
-        ...record,
-        noteLineEnabled: target.checked,
-        updatedAt: new Date().toISOString(),
-      };
-      await putRecord(updated);
-      state.records = ensureRecordDefaults(await getAllRecords());
-    }
+    const snap = state.funnelSnapshots.find((x) => x.id === id);
+    if (!snap) return;
+    await putFunnelSnapshot({
+      ...snap,
+      noteLineEnabled: target.checked,
+      updatedAt: new Date().toISOString(),
+    });
+    state.funnelSnapshots = await getAllFunnelSnapshots();
     markDataEdited();
     render();
   });
@@ -643,13 +621,10 @@ function wireEvents() {
       "最後確認：確定刪除全部增長儀表板紀錄？"
     );
     if (!ok) return;
-    if (state.funnelSnapshots.length) {
-      await clearAllFunnelSnapshotsOnly();
-      state.funnelSnapshots = [];
-    } else {
-      await clearAllRecordsOnly();
-      state.records = [];
-    }
+    await clearAllFunnelSnapshotsOnly();
+    await clearAllRecordsOnly();
+    state.funnelSnapshots = [];
+    state.records = [];
     resetFormMode();
     markDataEdited();
     render();
@@ -706,49 +681,6 @@ async function onSaveRecord(event: SubmitEvent): Promise<void> {
   event.preventDefault();
   goToFunnelSection();
   alert("紀錄輸入已整合到「資料管理中心 > 新增快照」。請在那裡新增即可。");
-  return;
-
-  const stageNames = getDashboardStages();
-  const parsed = parseDateTimeLocalInput(els.datetimeInput.value);
-  const threads = Math.floor(Number(els.threadsInput.value));
-  const lineRaw = els.lineInput.value.trim();
-  const line = lineRaw === "" ? null : Math.floor(Number(lineRaw));
-
-  if (!parsed) {
-    alert("請透過月曆時間選擇正確的日期與時間");
-    return;
-  }
-  if (!Number.isFinite(threads) || threads < 0) {
-    alert(`${stageNames.first} 人數需為 0 或正整數`);
-    return;
-  }
-  if (line !== null && (!Number.isFinite(line) || line < 0)) {
-    alert(`${stageNames.second} 人數需為空值或正整數`);
-    return;
-  }
-
-  const existing = state.editingId ? state.records.find((r) => r.id === state.editingId) : null;
-  const note = els.noteInput.value.trim();
-  const noteLineEnabled = note ? (existing ? existing.noteLineEnabled !== false : true) : false;
-
-  const record = {
-    id: existing ? existing.id : Date.now() + Math.floor(Math.random() * 1000),
-    timestamp: parsed.getTime(),
-    datetime: formatDisplayDateTime(parsed),
-    threads,
-    line,
-    note,
-    noteLineEnabled,
-    sourceType: "legacy" as const,
-    createdAt: existing?.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  await putRecord(record);
-  state.records = ensureRecordDefaults(await getAllRecords());
-  markDataEdited();
-  render();
-  resetFormMode();
 }
 
 function onExport() {
@@ -860,16 +792,17 @@ async function onExportPdfReport() {
     return;
   }
 
-  const allGrowthRecords = getDashboardRecordsForView().sort((a, b) => a.timestamp - b.timestamp);
-  if (!allGrowthRecords.length) {
-    alert("目前沒有增長資料，無法產生 PDF 報告。");
+  const rangeRecords = filterByRange(getDashboardRecordsForView(), state.range).sort((a, b) => a.timestamp - b.timestamp);
+  if (!rangeRecords.length) {
+    alert("目前區間沒有增長資料，無法產生 PDF 報告。");
     return;
   }
+  const rangeSnapshots = filterFunnelSnapshotsByRange(state.funnelSnapshots, state.range);
 
-  const kpi = computeKpiForReport(allGrowthRecords);
+  const kpi = computeKpiForReport(rangeRecords);
   const stageNames = getDashboardStages();
-  const rangeLabel = `全部增長資料（${buildRangeLabel(allGrowthRecords)}）`;
-  const platformSummaries = buildPlatformKpiSummaries(state.funnelSnapshots);
+  const rangeLabel = buildRangeLabel(rangeRecords);
+  const platformSummaries = buildPlatformKpiSummaries(rangeSnapshots);
   const trendChartDataUrl = getChartDataUrl();
   const conversionChartDataUrl = getConversionChartDataUrl();
 
@@ -887,7 +820,7 @@ async function onExportPdfReport() {
       stageNames,
       kpi,
       platformSummaries,
-      records: allGrowthRecords,
+      records: rangeRecords,
       trendChartDataUrl,
       conversionChartDataUrl,
     });
@@ -925,7 +858,7 @@ async function onExportPdfReport() {
   doc.setFontSize(11);
   doc.text("重點數據", margin, y);
   y += 5;
-  doc.text(`總紀錄數：${allGrowthRecords.length} 筆`, margin, y);
+  doc.text(`總紀錄數：${rangeRecords.length} 筆`, margin, y);
   y += 5;
   doc.text(`平台數：${Math.max(getSortedFunnelStages().length, 2)} 個`, margin, y);
   y += 5;
@@ -979,7 +912,7 @@ async function onExportPdfReport() {
   doc.text("紀錄", margin, y);
   y += 4;
   drawPdfRecordsTable(doc, {
-    records: [...allGrowthRecords].reverse(),
+    records: [...rangeRecords].reverse(),
     stageNames,
     startY: y,
     margin,
@@ -1035,10 +968,33 @@ async function onImport(event: Event): Promise<void> {
     }
     const dashboardRows = extractDashboardRowsFromPayload(data);
     const contentRows = extractContentRowsFromPayload(data);
-    const valid = normalizeImportedRecords(dashboardRows);
+    const validDashboardRecords = normalizeImportedRecords(dashboardRows);
     const validContent = normalizeImportedContentItems(contentRows || []);
-    const funnelStages = normalizeImportedFunnelStages(extractFunnelStageRowsFromPayload(data));
-    const funnelSnapshots = normalizeImportedFunnelSnapshots(extractFunnelSnapshotRowsFromPayload(data), funnelStages);
+    let funnelStages = normalizeImportedFunnelStages(extractFunnelStageRowsFromPayload(data));
+    if (!funnelStages.length) {
+      funnelStages = inferFunnelStagesFromDashboardRows(dashboardRows);
+    }
+    if (!funnelStages.length) {
+      funnelStages = [
+        {
+          id: `stage-${Date.now()}-1`,
+          name: "平台A",
+          order: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          id: `stage-${Date.now()}-2`,
+          name: "平台B",
+          order: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+    }
+    const importedSnapshots = normalizeImportedFunnelSnapshots(extractFunnelSnapshotRowsFromPayload(data), funnelStages);
+    const snapshotsFromDashboard = convertDashboardRecordsToSnapshots(validDashboardRecords, funnelStages);
+    const funnelSnapshots = dedupeFunnelSnapshots([...importedSnapshots, ...snapshotsFromDashboard], funnelStages);
     const kpiItems = normalizeImportedKpiItems(extractKpiRowsFromPayload(data));
     const importedRoleId = extractRoleIdFromPayload(data);
     if (importedRoleId) {
@@ -1048,9 +1004,6 @@ async function onImport(event: Event): Promise<void> {
     }
 
     await clearAllData();
-    for (const record of valid) {
-      await putRecord(record);
-    }
     for (const item of validContent) {
       await putContentItem(item);
     }
@@ -1060,6 +1013,7 @@ async function onImport(event: Event): Promise<void> {
     for (const snapshot of funnelSnapshots) {
       await putFunnelSnapshot(snapshot);
     }
+    await clearAllRecordsOnly();
     for (const item of kpiItems) {
       await putKpiItem(item);
     }
@@ -1072,7 +1026,7 @@ async function onImport(event: Event): Promise<void> {
     markDataEdited();
     render();
     alert(
-      `已匯入：儀表板 ${valid.length} 筆、素材 ${validContent.length} 筆、漏斗階層 ${funnelStages.length} 筆、漏斗快照 ${funnelSnapshots.length} 筆、KPI ${kpiItems.length} 筆`
+      `已匯入：紀錄/快照 ${funnelSnapshots.length} 筆、素材 ${validContent.length} 筆、漏斗階層 ${funnelStages.length} 筆、KPI ${kpiItems.length} 筆`
     );
   } catch (err) {
     alert(`匯入失敗: ${err.message}`);
@@ -1123,36 +1077,33 @@ function render() {
 
 function getDashboardRecordsForView(): DashboardRecord[] {
   const stages = getDashboardStages();
-  const funnelRows =
-    stages.firstId && stages.secondId
-      ? (state.funnelSnapshots
-          .map((snap) => {
-            const firstVal = snap.values?.[stages.firstId];
-            const secondVal = snap.values?.[stages.secondId];
-            const threads = Number(firstVal);
-            const line = secondVal == null ? null : Number(secondVal);
-            if (!Number.isFinite(threads) || threads < 0) return null;
-            if (line !== null && (!Number.isFinite(line) || line < 0)) return null;
-            return {
-              id: snap.id,
-              timestamp: snap.timestamp,
-              datetime: snap.datetime,
-              threads: Math.floor(threads),
-              line: line === null ? null : Math.floor(line),
-              note: snap.note || "",
-              noteLineEnabled:
-                typeof snap.noteLineEnabled === "boolean"
-                  ? snap.noteLineEnabled
-                  : (snap.note || "").trim().length > 0,
-              sourceType: "funnel" as const,
-              createdAt: snap.createdAt,
-              updatedAt: snap.updatedAt,
-            };
-          })
-          .filter((x) => !!x) as DashboardRecord[])
-      : [];
-  const legacyRows = ensureRecordDefaults(state.records);
-  return [...legacyRows, ...funnelRows].sort((a, b) => a.timestamp - b.timestamp);
+  if (!stages.firstId || !stages.secondId) return [];
+  return state.funnelSnapshots
+    .map((snap) => {
+      const firstVal = snap.values?.[stages.firstId];
+      const secondVal = snap.values?.[stages.secondId];
+      const threads = Number(firstVal);
+      const line = secondVal == null ? null : Number(secondVal);
+      if (!Number.isFinite(threads) || threads < 0) return null;
+      if (line !== null && (!Number.isFinite(line) || line < 0)) return null;
+      return {
+        id: snap.id,
+        timestamp: snap.timestamp,
+        datetime: snap.datetime,
+        threads: Math.floor(threads),
+        line: line === null ? null : Math.floor(line),
+        note: snap.note || "",
+        noteLineEnabled:
+          typeof snap.noteLineEnabled === "boolean"
+            ? snap.noteLineEnabled
+            : (snap.note || "").trim().length > 0,
+        sourceType: "funnel" as const,
+        createdAt: snap.createdAt,
+        updatedAt: snap.updatedAt,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x)
+    .sort((a, b) => a.timestamp - b.timestamp);
 }
 
 function getSortedFunnelStages(): FunnelStage[] {
@@ -1361,7 +1312,6 @@ function renderTable(records: DashboardRecord[]): void {
       checkbox.checked = record.noteLineEnabled !== false;
       checkbox.dataset.action = "toggle-note-line";
       checkbox.dataset.id = String(record.id);
-      checkbox.dataset.source = record.sourceType;
       checkbox.className = "note-line-check";
       noteLineCell.appendChild(checkbox);
     } else {
@@ -1371,11 +1321,9 @@ function renderTable(records: DashboardRecord[]): void {
     actionCell.dataset.label = "操作";
     const editBtn = row.querySelector('[data-action="edit"]') as HTMLButtonElement;
     editBtn.dataset.id = String(record.id);
-    editBtn.dataset.source = record.sourceType;
-    editBtn.textContent = record.sourceType === "funnel" ? "來源" : "編輯";
+    editBtn.textContent = "來源";
     const deleteBtn = row.querySelector('[data-action="delete"]') as HTMLButtonElement;
     deleteBtn.dataset.id = String(record.id);
-    deleteBtn.dataset.source = record.sourceType;
     els.recordTableBody.appendChild(row);
   }
 
@@ -1425,7 +1373,6 @@ function renderPlatformKpiCards(snapshots: FunnelSnapshot[]): void {
     card.innerHTML = `
       <p>${escapeHtml(summary.name)} 最新人數</p>
       <h3>${summary.latest.toLocaleString()}</h3>
-      <p class="platform-kpi-meta">區間增長：${formatSignedPercent(summary.growth)}</p>
     `;
     els.platformKpiGrid.appendChild(card);
   }
@@ -1709,9 +1656,11 @@ function renderConversionTrendChart(snapshots: FunnelSnapshot[], records: Dashbo
   const firstStageId = orderedStageIds[0] || "";
   const secondStageId = orderedStageIds[1] || "";
   const lastStageId = orderedStageIds[orderedStageIds.length - 1] || "";
+  const preferRecordSeriesForTwoStages = orderedStageIds.length === 2 && records.length > 0;
   const canUseSnapshotSeries =
     snapshots.length > 0 &&
     orderedStageIds.length >= 2 &&
+    !preferRecordSeriesForTwoStages &&
     firstStageId !== "" &&
     secondStageId !== "" &&
     lastStageId !== "";
@@ -1802,7 +1751,7 @@ function renderConversionTrendChart(snapshots: FunnelSnapshot[], records: Dashbo
     return;
   }
 
-  const bucketSeries = buildBucketedConversionBarSeries(pointTimestamps, pointRecordIds, datasets, state.range);
+  const bucketSeries = buildBucketedConversionBarSeries(pointTimestamps, pointRecordIds, datasets);
   if (!bucketSeries.labels.length) {
     drawEmptyChartMessage(ctx, els.conversionTrendCanvas, "目前區間沒有可計算的區間轉換率資料");
     return;
@@ -1931,16 +1880,14 @@ function drawEmptyChartMessage(ctx: CanvasRenderingContext2D, canvas: HTMLCanvas
 function buildBucketedConversionBarSeries(
   timestamps: number[],
   recordIds: number[],
-  datasets: Array<Record<string, unknown>>,
-  range: RangeState
+  datasets: Array<Record<string, unknown>>
 ): { labels: string[]; recordIds: number[]; datasets: Array<Record<string, unknown>> } {
-  const bucketUnit = getConversionBucketUnit(range, timestamps);
   const bucketKeys: string[] = [];
   const bucketLabelMap = new Map<string, string>();
   const lastIndexByBucket = new Map<string, number>();
 
   for (let i = 0; i < timestamps.length; i += 1) {
-    const bucket = getBucketKeyAndLabel(timestamps[i], bucketUnit);
+    const bucket = getDayBucketKeyAndLabel(timestamps[i]);
     if (!bucketLabelMap.has(bucket.key)) {
       bucketKeys.push(bucket.key);
       bucketLabelMap.set(bucket.key, bucket.label);
@@ -1960,7 +1907,7 @@ function buildBucketedConversionBarSeries(
     );
     const bucketValueMap = new Map<string, number | null>();
     for (let i = 0; i < timestamps.length; i += 1) {
-      const dayKey = getBucketKeyAndLabel(timestamps[i], bucketUnit).key;
+      const dayKey = getDayBucketKeyAndLabel(timestamps[i]).key;
       const val = src[i];
       if (Number.isFinite(val)) {
         bucketValueMap.set(dayKey, Number(val));
@@ -1981,53 +1928,13 @@ function buildBucketedConversionBarSeries(
   };
 }
 
-function getConversionBucketUnit(range: RangeState, timestamps: number[]): "hour" | "day" | "week" | "month" {
-  if (range.type === "today") return "hour";
-  if (range.type === "7d") return "day";
-  if (range.type === "30d") return "day";
-
-  if (timestamps.length <= 1) return "day";
-  const minTs = Math.min(...timestamps);
-  const maxTs = Math.max(...timestamps);
-  const spanDays = Math.max(1, Math.ceil((maxTs - minTs) / (24 * 60 * 60 * 1000)));
-  if (spanDays <= 2) return "hour";
-  if (spanDays <= 62) return "day";
-  if (spanDays <= 370) return "week";
-  return "month";
-}
-
-function getBucketKeyAndLabel(timestamp: number, unit: "hour" | "day" | "week" | "month"): { key: string; label: string } {
+function getDayBucketKeyAndLabel(timestamp: number): { key: string; label: string } {
   const d = new Date(timestamp);
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const date = String(d.getDate()).padStart(2, "0");
-  const hour = String(d.getHours()).padStart(2, "0");
-
-  if (unit === "hour") {
-    const key = `${year}-${month}-${date}-${hour}`;
-    return { key, label: `${year}/${month}/${date} ${hour}:00` };
-  }
-  if (unit === "day") {
-    const key = `${year}-${month}-${date}`;
-    return { key, label: `${year}/${month}/${date}` };
-  }
-  if (unit === "month") {
-    const key = `${year}-${month}`;
-    return { key, label: `${year}/${month}` };
-  }
-
-  const week = getIsoWeekNumber(d);
-  const weekPadded = String(week).padStart(2, "0");
-  const key = `${year}-W${weekPadded}`;
-  return { key, label: `${year}/W${weekPadded}` };
-}
-
-function getIsoWeekNumber(date: Date): number {
-  const utc = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const day = utc.getUTCDay() || 7;
-  utc.setUTCDate(utc.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
-  return Math.ceil((((utc.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  const key = `${year}-${month}-${date}`;
+  return { key, label: `${year}/${month}/${date}` };
 }
 
 function buildNoteMarkers(sorted: DashboardRecord[]) {
@@ -2359,6 +2266,22 @@ function getAllFunnelSnapshots(): Promise<FunnelSnapshot[]> {
   });
 }
 
+async function migrateLegacyRecordsToSnapshotsIfNeeded(): Promise<void> {
+  if (!state.records.length || state.funnelStages.length < 2) return;
+  const migrated = convertDashboardRecordsToSnapshots(state.records, state.funnelStages);
+  if (!migrated.length) {
+    await clearAllRecordsOnly();
+    return;
+  }
+  const existing = state.funnelSnapshots || [];
+  const merged = dedupeFunnelSnapshots([...existing, ...migrated], state.funnelStages);
+  await clearAllFunnelSnapshotsOnly();
+  for (const snapshot of merged) {
+    await putFunnelSnapshot(snapshot);
+  }
+  await clearAllRecordsOnly();
+}
+
 function putKpiItem(item: KpiItem): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const req = tx(KPI_STORE_NAME, "readwrite").put(item);
@@ -2600,8 +2523,9 @@ function filterRecordsByKeyword(records: DashboardRecord[], keyword: string): Da
   const q = (keyword || "").trim().toLowerCase();
   if (!q) return records;
   const stages = [...state.funnelStages].sort((a, b) => a.order - b.order);
+  const snapshotsById = new Map(state.funnelSnapshots.map((x) => [x.id, x] as const));
   return records.filter((r) => {
-    const snap = r.sourceType === "funnel" ? state.funnelSnapshots.find((x) => x.id === r.id) : null;
+    const snap = snapshotsById.get(r.id);
     const stageText = snap
       ? stages
           .map((stage) => `${stage.name}:${Number.isFinite(snap.values?.[stage.id] as number) ? snap.values[stage.id] : "-"}`)
@@ -2741,6 +2665,71 @@ function normalizeImportedFunnelSnapshots(rows: unknown[], stages: FunnelStage[]
       };
     })
     .filter((x): x is FunnelSnapshot => !!x);
+}
+
+function inferFunnelStagesFromDashboardRows(rows: unknown[]): FunnelStage[] {
+  if (!Array.isArray(rows) || !rows.length) return [];
+  const firstRow = (rows[0] || {}) as { stage_1_name?: unknown; stage_2_name?: unknown };
+  const stage1Name = (firstRow.stage_1_name || "").toString().trim() || "平台A";
+  const stage2Name = (firstRow.stage_2_name || "").toString().trim() || "平台B";
+  const now = new Date().toISOString();
+  return [
+    {
+      id: `stage-${Date.now()}-1`,
+      name: stage1Name.slice(0, 40),
+      order: 0,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `stage-${Date.now()}-2`,
+      name: stage2Name.slice(0, 40),
+      order: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+}
+
+function convertDashboardRecordsToSnapshots(records: DashboardRecord[], stages: FunnelStage[]): FunnelSnapshot[] {
+  const sortedStages = [...stages].sort((a, b) => a.order - b.order);
+  const firstStageId = sortedStages[0]?.id;
+  const secondStageId = sortedStages[1]?.id;
+  if (!firstStageId || !secondStageId) return [];
+  return records
+    .map((record, index) => ({
+      id: Date.now() + Math.floor(Math.random() * 100000) + index,
+      timestamp: record.timestamp,
+      datetime: record.datetime || formatDisplayDateTime(new Date(record.timestamp)),
+      values: {
+        [firstStageId]: Math.max(0, Math.floor(Number(record.threads) || 0)),
+        [secondStageId]:
+          Number.isFinite(record.line) && Number(record.line) >= 0 ? Math.floor(Number(record.line)) : null,
+      },
+      note: (record.note || "").toString().slice(0, 80),
+      noteLineEnabled:
+        typeof record.noteLineEnabled === "boolean"
+          ? record.noteLineEnabled
+          : (record.note || "").toString().trim().length > 0,
+      createdAt: (record.createdAt || new Date().toISOString()).toString(),
+      updatedAt: (record.updatedAt || new Date().toISOString()).toString(),
+    }))
+    .filter((snapshot) => Number.isFinite(snapshot.values[firstStageId]));
+}
+
+function dedupeFunnelSnapshots(snapshots: FunnelSnapshot[], stages?: FunnelStage[]): FunnelSnapshot[] {
+  const map = new Map<string, FunnelSnapshot>();
+  const sortedStages = stages ? [...stages].sort((a, b) => a.order - b.order) : getSortedFunnelStages();
+  const stageIds = sortedStages.map((x) => x.id);
+  for (const snap of snapshots) {
+    const key = [
+      snap.timestamp,
+      ...stageIds.map((id) => (snap.values?.[id] == null ? "-" : String(snap.values[id]))),
+      (snap.note || "").trim(),
+    ].join("|");
+    map.set(key, snap);
+  }
+  return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
 }
 
 function normalizeImportedKpiItems(rows: unknown[]): KpiItem[] {
