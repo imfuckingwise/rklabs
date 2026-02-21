@@ -128,7 +128,8 @@ interface AppState {
   funnelStages: FunnelStage[];
   funnelSnapshots: FunnelSnapshot[];
   kpiItems: KpiItem[];
-  range: RangeState;
+  trendRange: RangeState;
+  conversionRange: RangeState;
   showNoteLines: boolean;
   sortOrder: SortOrder;
   roleId: string;
@@ -165,7 +166,8 @@ const state: AppState = {
   funnelStages: [],
   funnelSnapshots: [],
   kpiItems: [],
-  range: loadRangeState(),
+  trendRange: loadTrendRangeState(),
+  conversionRange: loadConversionRangeState(),
   showNoteLines: loadNoteLineSetting(),
   sortOrder: loadSortOrder(),
   roleId: loadRoleId(),
@@ -201,10 +203,14 @@ interface ElementsMap {
   formTitle: HTMLElement;
   saveRecordBtn: HTMLButtonElement;
   resetFormBtn: HTMLButtonElement;
-  rangeSelect: HTMLSelectElement;
-  startDate: HTMLInputElement;
-  endDate: HTMLInputElement;
-  applyRangeBtn: HTMLButtonElement;
+  trendRangeSelect: HTMLSelectElement;
+  trendStartDate: HTMLInputElement;
+  trendEndDate: HTMLInputElement;
+  applyTrendRangeBtn: HTMLButtonElement;
+  conversionRangeSelect: HTMLSelectElement;
+  conversionStartDate: HTMLInputElement;
+  conversionEndDate: HTMLInputElement;
+  applyConversionRangeBtn: HTMLButtonElement;
   latestConversion: HTMLElement;
   avgConversion: HTMLElement;
   threadsGrowth: HTMLElement;
@@ -309,10 +315,14 @@ const els: ElementsMap = {
   formTitle: byId("formTitle", "h2"),
   saveRecordBtn: byId("saveRecordBtn", "button"),
   resetFormBtn: byId("resetFormBtn", "button"),
-  rangeSelect: byId("rangeSelect", "select"),
-  startDate: byId("startDate", "input"),
-  endDate: byId("endDate", "input"),
-  applyRangeBtn: byId("applyRangeBtn", "button"),
+  trendRangeSelect: byId("trendRangeSelect", "select"),
+  trendStartDate: byId("trendStartDate", "input"),
+  trendEndDate: byId("trendEndDate", "input"),
+  applyTrendRangeBtn: byId("applyTrendRangeBtn", "button"),
+  conversionRangeSelect: byId("conversionRangeSelect", "select"),
+  conversionStartDate: byId("conversionStartDate", "input"),
+  conversionEndDate: byId("conversionEndDate", "input"),
+  applyConversionRangeBtn: byId("applyConversionRangeBtn", "button"),
   latestConversion: byId("latestConversion", "h3"),
   avgConversion: byId("avgConversion", "h3"),
   threadsGrowth: byId("threadsGrowth", "h3"),
@@ -469,19 +479,35 @@ function wireEvents() {
   els.kpiForm.addEventListener("submit", onSaveKpiItem);
   els.resetKpiBtn.addEventListener("click", resetKpiFormMode);
 
-  els.rangeSelect.addEventListener("change", () => {
-    const custom = els.rangeSelect.value === "custom";
-    els.startDate.disabled = !custom;
-    els.endDate.disabled = !custom;
+  els.trendRangeSelect.addEventListener("change", () => {
+    const custom = els.trendRangeSelect.value === "custom";
+    els.trendStartDate.disabled = !custom;
+    els.trendEndDate.disabled = !custom;
   });
 
-  els.applyRangeBtn.addEventListener("click", () => {
-    state.range = {
-      type: toRangeType(els.rangeSelect.value),
-      start: els.startDate.value,
-      end: els.endDate.value,
+  els.applyTrendRangeBtn.addEventListener("click", () => {
+    state.trendRange = {
+      type: toRangeType(els.trendRangeSelect.value),
+      start: els.trendStartDate.value,
+      end: els.trendEndDate.value,
     };
-    persistRangeState(state.range);
+    persistTrendRangeState(state.trendRange);
+    render();
+  });
+
+  els.conversionRangeSelect.addEventListener("change", () => {
+    const custom = els.conversionRangeSelect.value === "custom";
+    els.conversionStartDate.disabled = !custom;
+    els.conversionEndDate.disabled = !custom;
+  });
+
+  els.applyConversionRangeBtn.addEventListener("click", () => {
+    state.conversionRange = {
+      type: toRangeType(els.conversionRangeSelect.value),
+      start: els.conversionStartDate.value,
+      end: els.conversionEndDate.value,
+    };
+    persistConversionRangeState(state.conversionRange);
     render();
   });
 
@@ -792,12 +818,12 @@ async function onExportPdfReport() {
     return;
   }
 
-  const rangeRecords = filterByRange(getDashboardRecordsForView(), state.range).sort((a, b) => a.timestamp - b.timestamp);
+  const rangeRecords = filterByRange(getDashboardRecordsForView(), state.trendRange).sort((a, b) => a.timestamp - b.timestamp);
   if (!rangeRecords.length) {
     alert("目前區間沒有增長資料，無法產生 PDF 報告。");
     return;
   }
-  const rangeSnapshots = filterFunnelSnapshotsByRange(state.funnelSnapshots, state.range);
+  const rangeSnapshots = filterFunnelSnapshotsByRange(state.funnelSnapshots, state.trendRange);
 
   const kpi = computeKpiForReport(rangeRecords);
   const stageNames = getDashboardStages();
@@ -1058,14 +1084,16 @@ async function onClearCache() {
 function render() {
   applyDashboardStageLabels();
   const dashboardRecords = getDashboardRecordsForView();
-  const visible = filterByRange(dashboardRecords, state.range);
-  const visibleSnapshots = filterFunnelSnapshotsByRange(state.funnelSnapshots, state.range);
+  const visible = filterByRange(dashboardRecords, state.trendRange);
+  const visibleSnapshots = filterFunnelSnapshotsByRange(state.funnelSnapshots, state.trendRange);
+  const conversionVisible = filterByRange(dashboardRecords, state.conversionRange);
+  const conversionVisibleSnapshots = filterFunnelSnapshotsByRange(state.funnelSnapshots, state.conversionRange);
   renderTrendStageControls();
   renderKpi(visible);
   renderPlatformKpiCards(visibleSnapshots);
-  renderTable(filterRecordsByKeyword(visible, state.recordSearch));
+  renderTable(filterRecordsByKeyword(dashboardRecords, state.recordSearch));
   renderChart(visible, visibleSnapshots);
-  renderConversionTrendChart(visibleSnapshots, visible);
+  renderConversionTrendChart(conversionVisibleSnapshots, conversionVisible);
   renderFunnelStages();
   renderFunnelSummary();
   renderKpiTable(filterKpiByKeyword(state.kpiItems, state.kpiSearch));
@@ -1542,7 +1570,7 @@ function renderChart(records: DashboardRecord[], snapshots: FunnelSnapshot[]): v
         const index = points[0].index;
         const recordId = recordIds[index];
         if (!Number.isFinite(recordId)) return;
-        focusRecordRow(recordId);
+        jumpToRecordFromChart(recordId);
       },
       onHover(event: unknown, _elements: unknown, chart: any) {
         const points = chart.getElementsAtEventForMode(event, "nearest", { intersect: false }, true);
@@ -1780,7 +1808,7 @@ function renderConversionTrendChart(snapshots: FunnelSnapshot[], records: Dashbo
         if (!points.length) return;
         const recordId = bucketSeries.recordIds[points[0].index];
         if (!Number.isFinite(recordId)) return;
-        focusRecordRow(recordId);
+        jumpToRecordFromChart(recordId);
       },
       onHover(event: unknown, _elements: unknown, chart: any) {
         const points = chart.getElementsAtEventForMode(event, "nearest", { intersect: false }, true);
@@ -3654,7 +3682,7 @@ function renderFunnelSummary(): void {
 function renderKpiTable(items: KpiItem[]): void {
   els.kpiTableBody.innerHTML = "";
   const dashboardRecords = getDashboardRecordsForView();
-  const reportKpi = computeKpiForReport(filterByRange(dashboardRecords, state.range));
+  const reportKpi = computeKpiForReport(filterByRange(dashboardRecords, state.trendRange));
   const sorted = [...items].sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
   for (const item of sorted) {
     const tr = document.createElement("tr");
@@ -3748,9 +3776,24 @@ function registerServiceWorker() {
   });
 }
 
-function loadRangeState() {
+function loadTrendRangeState() {
   try {
-    const raw = localStorage.getItem("ai-kol-range");
+    const raw = localStorage.getItem("ai-kol-trend-range");
+    if (!raw) return { type: "30d", start: "", end: "" };
+    const parsed = JSON.parse(raw);
+    return {
+      type: parsed.type || "30d",
+      start: parsed.start || "",
+      end: parsed.end || "",
+    };
+  } catch {
+    return { type: "30d", start: "", end: "" };
+  }
+}
+
+function loadConversionRangeState() {
+  try {
+    const raw = localStorage.getItem("ai-kol-conversion-range");
     if (!raw) return { type: "30d", start: "", end: "" };
     const parsed = JSON.parse(raw);
     return {
@@ -3885,8 +3928,12 @@ function ensureKpiDefaults(items: KpiItem[]): KpiItem[] {
   }));
 }
 
-function persistRangeState(range: RangeState): void {
-  localStorage.setItem("ai-kol-range", JSON.stringify(range));
+function persistTrendRangeState(range: RangeState): void {
+  localStorage.setItem("ai-kol-trend-range", JSON.stringify(range));
+}
+
+function persistConversionRangeState(range: RangeState): void {
+  localStorage.setItem("ai-kol-conversion-range", JSON.stringify(range));
 }
 
 function persistNoteLineSetting(enabled: boolean): void {
@@ -3938,13 +3985,19 @@ function persistMultiTrendStageIds(stageIds: string[]): void {
 }
 
 function applyRangeStateToUi() {
-  els.rangeSelect.value = state.range.type;
-  els.startDate.value = state.range.start;
-  els.endDate.value = state.range.end;
+  els.trendRangeSelect.value = state.trendRange.type;
+  els.trendStartDate.value = state.trendRange.start;
+  els.trendEndDate.value = state.trendRange.end;
+  const trendCustom = state.trendRange.type === "custom";
+  els.trendStartDate.disabled = !trendCustom;
+  els.trendEndDate.disabled = !trendCustom;
 
-  const custom = state.range.type === "custom";
-  els.startDate.disabled = !custom;
-  els.endDate.disabled = !custom;
+  els.conversionRangeSelect.value = state.conversionRange.type;
+  els.conversionStartDate.value = state.conversionRange.start;
+  els.conversionEndDate.value = state.conversionRange.end;
+  const conversionCustom = state.conversionRange.type === "custom";
+  els.conversionStartDate.disabled = !conversionCustom;
+  els.conversionEndDate.disabled = !conversionCustom;
 }
 
 function applyNoteLineStateToUi() {
@@ -4049,6 +4102,23 @@ function computeLastEditedAtFromData(
     if (!maxIso || iso > maxIso) maxIso = iso;
   }
   return maxIso;
+}
+
+function jumpToRecordFromChart(recordId: number): void {
+  state.dashboardTab = "records";
+  persistDashboardTab("records");
+  if (state.recordSearch) {
+    state.recordSearch = "";
+    persistRecordSearch("");
+    els.recordSearchInput.value = "";
+  }
+  if (window.location.hash !== "#dashboard-records") {
+    window.location.hash = "dashboard-records";
+  } else {
+    applyDashboardTabToUi();
+    render();
+  }
+  window.setTimeout(() => focusRecordRow(recordId), 120);
 }
 
 function focusRecordRow(recordId: number): void {

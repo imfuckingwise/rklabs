@@ -20,7 +20,7 @@
     </div>
     <nav class="app-nav" aria-label="主導覽">
       <button class="nav-btn" data-route="home" type="button">首頁</button>
-      <button class="nav-btn" data-route="dashboard" type="button">增長儀表板</button>
+      <button class="nav-btn" data-route="dashboard" type="button">儀表板</button>
       <button class="nav-btn" data-route="content" type="button">內容素材庫</button>
     </nav>
     <div class="storage-status" id="storageStatus"></div>
@@ -54,7 +54,7 @@
 
       <section class="tool-grid">
         <article class="panel tool-card actionable" data-route="dashboard">
-          <h3>增長儀表板</h3>
+          <h3>儀表板</h3>
           <p>追蹤漏斗前兩層平台，查看轉換率、增長曲線、事件標記與存檔。</p>
           <button class="ghost" type="button">進入工具</button>
         </article>
@@ -81,51 +81,6 @@
       </section>
 
       <section class="dashboard-subpage" data-dashboard-subpage="board">
-        <section class="panel filter-panel">
-          <div class="filter-head">
-            <h2>區間與績效</h2>
-            <div class="filter-row">
-              <label>
-                區間
-                <select id="rangeSelect">
-                  <option value="today">今日</option>
-                  <option value="7d">近 7 天</option>
-                  <option value="30d" selected>近 30 天</option>
-                  <option value="custom">自訂</option>
-                </select>
-              </label>
-              <label>
-                開始
-                <input id="startDate" type="datetime-local" disabled />
-              </label>
-              <label>
-                結束
-                <input id="endDate" type="datetime-local" disabled />
-              </label>
-              <button id="applyRangeBtn" type="button">套用</button>
-            </div>
-          </div>
-
-          <div class="kpi-grid">
-            <article class="kpi-card kpi-conv-latest">
-              <p>最新轉換率</p>
-              <h3 id="latestConversion">--</h3>
-            </article>
-            <article class="kpi-card kpi-conv">
-              <p>區間平均轉換率</p>
-              <h3 id="avgConversion">--</h3>
-            </article>
-            <article class="kpi-card kpi-th">
-              <p id="stage1GrowthLabel">第一層增長率</p>
-              <h3 id="threadsGrowth">--</h3>
-            </article>
-            <article class="kpi-card kpi-li">
-              <p id="stage2GrowthLabel">第二層增長率</p>
-              <h3 id="lineGrowth">--</h3>
-            </article>
-          </div>
-          <div class="platform-kpi-grid" id="platformKpiGrid"></div>
-        </section>
 
         <section class="panel report-panel">
           <div class="table-head">
@@ -140,7 +95,7 @@
         <section class="panel chart-panel">
           <div class="chart-header">
             <div>
-              <h2>粉絲增長趨勢圖</h2>
+              <h2>增長數據</h2>
               <p>可切換單平台/多平台比較（滾輪縮放、拖拉框選縮放、Shift+拖曳平移）</p>
             </div>
             <div class="chart-controls">
@@ -166,12 +121,43 @@
           <div class="chart-wrap">
             <canvas id="trendCanvas"></canvas>
           </div>
+          <div class="kpi-grid kpi-grid-growth">
+            <article class="kpi-card kpi-th">
+              <p id="stage1GrowthLabel">第一層增長率</p>
+              <h3 id="threadsGrowth">--</h3>
+            </article>
+            <article class="kpi-card kpi-li">
+              <p id="stage2GrowthLabel">第二層增長率</p>
+              <h3 id="lineGrowth">--</h3>
+            </article>
+          </div>
+          <div class="platform-kpi-grid" id="platformKpiGrid"></div>
+          <div class="chart-range-row">
+            <label>
+              區間
+              <select id="trendRangeSelect">
+                <option value="today">今日</option>
+                <option value="7d">近 7 天</option>
+                <option value="30d" selected>近 30 天</option>
+                <option value="custom">自訂</option>
+              </select>
+            </label>
+            <label>
+              開始
+              <input id="trendStartDate" type="datetime-local" disabled />
+            </label>
+            <label>
+              結束
+              <input id="trendEndDate" type="datetime-local" disabled />
+            </label>
+            <button id="applyTrendRangeBtn" type="button">套用</button>
+          </div>
         </section>
 
         <section class="panel chart-panel">
           <div class="chart-header">
             <div>
-              <h2>整體轉換率趨勢</h2>
+              <h2>轉換率</h2>
               <p>整體轉換率趨勢（單位：天，%）</p>
             </div>
             <div class="chart-controls">
@@ -180,6 +166,36 @@
           </div>
           <div class="chart-wrap">
             <canvas id="conversionTrendCanvas"></canvas>
+          </div>
+          <div class="kpi-grid kpi-grid-conversion">
+            <article class="kpi-card kpi-conv-latest">
+              <p>最新轉換率</p>
+              <h3 id="latestConversion">--</h3>
+            </article>
+            <article class="kpi-card kpi-conv">
+              <p>區間平均轉換率</p>
+              <h3 id="avgConversion">--</h3>
+            </article>
+          </div>
+          <div class="chart-range-row">
+            <label>
+              區間
+              <select id="conversionRangeSelect">
+                <option value="today">今日</option>
+                <option value="7d">近 7 天</option>
+                <option value="30d" selected>近 30 天</option>
+                <option value="custom">自訂</option>
+              </select>
+            </label>
+            <label>
+              開始
+              <input id="conversionStartDate" type="datetime-local" disabled />
+            </label>
+            <label>
+              結束
+              <input id="conversionEndDate" type="datetime-local" disabled />
+            </label>
+            <button id="applyConversionRangeBtn" type="button">套用</button>
           </div>
         </section>
       </section>
