@@ -1,0 +1,26 @@
+{
+  "name": "rklabs",
+  "version": "1.0.0",
+  "description": "多頁式前端工具（純 HTML/CSS/JS），目前包含： - 跨平台增長儀表板（Threads / LINE） - 內容素材庫（可記錄人設、Prompt、腳本與其他資訊） - 全平台 JSON 存檔（匯出 / 載入） - 跨平台增長 PDF 報告（一鍵匯出）",
+  "main": "app.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "watch": "tsc -p tsconfig.json --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imfuckingwise/rklabs.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/imfuckingwise/rklabs/issues"
+  },
+  "homepage": "https://github.com/imfuckingwise/rklabs#readme",
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

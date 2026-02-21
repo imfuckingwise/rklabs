@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "none",
+    "lib": ["ES2020", "DOM"],
+    "strict": false,
+    "noImplicitAny": true,
+    "noEmitOnError": true,
+    "skipLibCheck": true,
+    "removeComments": false
+  },
+  "include": ["app.ts"]
+}

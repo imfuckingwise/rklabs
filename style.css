@@ -19,6 +19,8 @@ body {
   margin: 0;
   color: var(--ink);
   font-family: "Manrope", "Noto Sans TC", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
   background: radial-gradient(1100px 500px at 10% -10%, #213056 0%, transparent 45%),
     radial-gradient(1100px 480px at 100% 0%, #2d1f3f 0%, transparent 50%),
     linear-gradient(180deg, #0f1118 0%, #0b0e16 100%);
@@ -62,7 +64,7 @@ body {
   color: #7a86ad;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 h1 {
@@ -123,6 +125,31 @@ h1 {
 .app-page.active {
   display: grid;
   gap: 16px;
+}
+
+.dashboard-subnav-panel {
+  padding: 12px 14px;
+}
+
+.dashboard-subnav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dashboard-subnav-btn {
+  height: 36px;
+  min-width: 120px;
+  padding: 0 12px;
+}
+
+.dashboard-subpage {
+  display: none;
+  gap: 14px;
+}
+
+.dashboard-subpage.active {
+  display: grid;
 }
 
 .panel {
@@ -187,7 +214,7 @@ h2 {
   margin-top: auto;
   display: inline-block;
   color: #8ea2d4;
-  font-size: 12px;
+  font-size: 13px;
   border: 1px solid #33456f;
   border-radius: 999px;
   padding: 5px 9px;
@@ -211,7 +238,7 @@ h2 {
 
 .save-head p {
   margin: 2px 0 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--muted);
 }
 
@@ -233,7 +260,7 @@ h2 {
   align-items: center;
   gap: 8px;
   color: #c8d2ee;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .role-label input {
@@ -246,7 +273,7 @@ label {
   display: grid;
   gap: 7px;
   color: #b4bdd9;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 input,
@@ -287,6 +314,7 @@ select:disabled {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
+
 
 .actions,
 .table-actions {
@@ -357,6 +385,23 @@ button.danger {
   gap: 10px;
 }
 
+.platform-kpi-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.platform-kpi-card h3 {
+  font-size: 24px;
+}
+
+.platform-kpi-meta {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #8ea0c8;
+}
+
 .kpi-card {
   border: 1px solid #2f374f;
   border-radius: 14px;
@@ -367,7 +412,7 @@ button.danger {
 .kpi-card p {
   margin: 0;
   color: #8e99bc;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .kpi-card h3 {
@@ -408,7 +453,7 @@ button.danger {
 .chart-header p {
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .chart-controls {
@@ -416,6 +461,50 @@ button.danger {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.chart-inline-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #c8d2ee;
+  background: #121b2d;
+  border: 1px solid #2e3a5a;
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+
+.chart-inline-field select {
+  width: auto;
+  min-width: 120px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.trend-stage-multi-options {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.trend-stage-multi-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #c8d2ee;
+  background: #121b2d;
+  border: 1px solid #2e3a5a;
+  border-radius: 999px;
+  padding: 6px 10px;
+}
+
+.trend-stage-multi-options input {
+  width: 14px;
+  height: 14px;
+  accent-color: #64a7ff;
 }
 
 .chart-controls .ghost {
@@ -426,7 +515,7 @@ button.danger {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: #c8d2ee;
   background: #121b2d;
   border: 1px solid #2e3a5a;
@@ -453,6 +542,12 @@ button.danger {
   display: block;
 }
 
+#conversionTrendCanvas {
+  width: 100%;
+  height: 360px;
+  display: block;
+}
+
 .table-head {
   display: flex;
   justify-content: space-between;
@@ -472,7 +567,7 @@ button.danger {
   align-items: center;
   gap: 8px;
   color: #c8d2ee;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .sort-label select {
@@ -487,7 +582,7 @@ button.danger {
   align-items: center;
   gap: 8px;
   color: #c8d2ee;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .search-label input {
@@ -521,6 +616,11 @@ td {
 th {
   color: #a0abcf;
   font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #151c2f;
+  box-shadow: 0 1px 0 #283149;
 }
 
 td {
@@ -590,14 +690,14 @@ td[data-col="body"] {
 .content-viewer-head p {
   margin: 6px 0 0;
   color: #90a0c5;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .content-viewer-tags,
 .content-viewer-ref {
   margin: 0;
   color: #a9b7da;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .content-viewer-ref {
@@ -616,7 +716,7 @@ td[data-col="body"] {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.5;
-  font-size: 13px;
+  font-size: 14px;
   color: #e9efff;
   background: #0f1423;
   border: 1px solid #2e3a5a;
@@ -632,7 +732,7 @@ td[data-col="body"] {
 .content-table th,
 .content-table td {
   padding: 6px 7px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 #contentPage .row-actions {
@@ -643,7 +743,7 @@ td[data-col="body"] {
   min-width: 54px;
   height: 28px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 8px;
 }
 
@@ -663,13 +763,138 @@ button.ghost {
   background: #2a3652;
   color: #dbe6ff;
   padding: 7px 10px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .note-line-check {
   width: 16px;
   height: 16px;
   accent-color: #64a7ff;
+}
+
+.funnel-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.funnel-config,
+.funnel-snapshot {
+  background: #101626;
+  border: 1px solid #29344f;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.funnel-config h3,
+.funnel-snapshot h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.funnel-stage-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.funnel-stage-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.funnel-stage-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #2b3a5a;
+  background: #131c31;
+  cursor: grab;
+}
+
+.funnel-stage-chip.is-dragging {
+  opacity: 0.55;
+}
+
+.funnel-stage-chip.is-drag-over {
+  border-color: #69a8ff;
+  box-shadow: 0 0 0 1px rgba(105, 168, 255, 0.5) inset;
+}
+
+.helper-text {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #96a7cf;
+}
+
+.funnel-stage-chip .danger {
+  min-width: 56px;
+  height: 28px;
+}
+
+.funnel-stage-chip .row-actions {
+  gap: 6px;
+}
+
+.funnel-stage-chip .row-actions button {
+  min-width: 52px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
+.funnel-stage-inputs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.funnel-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.funnel-metric {
+  border: 1px solid #2f374f;
+  border-radius: 12px;
+  padding: 10px;
+  background: #121727;
+}
+
+.funnel-metric p {
+  margin: 0;
+  color: #9ba8ce;
+  font-size: 13px;
+}
+
+.funnel-metric h3 {
+  margin: 6px 0 0;
+  color: #9ed9ff;
+  font-size: 24px;
+}
+
+.funnel-metric.overall h3 {
+  color: #c9f56f;
+}
+
+.empty-text {
+  margin: 0;
+  color: #8ea0ca;
+  font-size: 13px;
+}
+
+.kpi-manage-panel .grid-4 + .grid-4 {
+  margin-top: 10px;
 }
 
 @media (max-width: 1080px) {
@@ -699,12 +924,24 @@ button.ghost {
     grid-template-columns: 1fr;
   }
 
+  .platform-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
   .content-top-split {
+    grid-template-columns: 1fr;
+  }
+
+  .funnel-layout {
     grid-template-columns: 1fr;
   }
 
   #trendCanvas {
     height: 430px;
+  }
+
+  #conversionTrendCanvas {
+    height: 300px;
   }
 }
 
@@ -735,11 +972,21 @@ button.ghost {
     overflow: visible;
   }
 
+  .dashboard-subnav {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-subnav-btn {
+    width: 100%;
+    min-width: 0;
+  }
+
   .nav-btn {
     min-width: 0;
     height: 34px;
     padding: 0 8px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .save-panel {
@@ -811,6 +1058,19 @@ button.ghost {
     gap: 8px;
   }
 
+  #dashboardPage .chart-inline-field {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  #dashboardPage .chart-inline-field select {
+    flex: 1;
+  }
+
+  #dashboardPage .trend-stage-multi-options {
+    width: 100%;
+  }
+
   #dashboardPage .chart-toggle {
     justify-content: center;
   }
@@ -832,6 +1092,10 @@ button.ghost {
 
   #dashboardPage .table-tools > * {
     min-width: 0;
+  }
+
+  .funnel-stage-add {
+    grid-template-columns: 1fr;
   }
 
   #dashboardPage .kpi-card h3 {
@@ -869,7 +1133,7 @@ button.ghost {
   .table-wrap td {
     border-bottom: 1px dashed #2a3653;
     padding: 6px 4px;
-    font-size: 12px;
+    font-size: 13px;
     display: grid;
     grid-template-columns: 78px minmax(0, 1fr);
     gap: 8px;
@@ -879,7 +1143,7 @@ button.ghost {
   .table-wrap td::before {
     content: attr(data-label);
     color: #8ea1cf;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
   }
 
@@ -912,7 +1176,7 @@ button.ghost {
     min-width: 52px;
     height: 28px;
     padding: 0 8px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   h1 {
@@ -921,5 +1185,9 @@ button.ghost {
 
   #trendCanvas {
     height: 270px;
+  }
+
+  #conversionTrendCanvas {
+    height: 240px;
   }
 }

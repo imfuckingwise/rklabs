@@ -20,7 +20,7 @@
     </div>
     <nav class="app-nav" aria-label="主導覽">
       <button class="nav-btn" data-route="home" type="button">首頁</button>
-      <button class="nav-btn" data-route="dashboard" type="button">跨平台增長儀表板</button>
+      <button class="nav-btn" data-route="dashboard" type="button">增長儀表板</button>
       <button class="nav-btn" data-route="content" type="button">內容素材庫</button>
     </nav>
     <div class="storage-status" id="storageStatus"></div>
@@ -54,8 +54,8 @@
 
       <section class="tool-grid">
         <article class="panel tool-card actionable" data-route="dashboard">
-          <h3>跨平台增長儀表板</h3>
-          <p>追蹤 Threads 與 LINE，查看轉換率、增長曲線、事件標記與存檔。</p>
+          <h3>增長儀表板</h3>
+          <p>追蹤漏斗前兩層平台，查看轉換率、增長曲線、事件標記與存檔。</p>
           <button class="ghost" type="button">進入工具</button>
         </article>
         <article class="panel tool-card coming-soon">
@@ -72,134 +72,275 @@
     </section>
 
     <section id="dashboardPage" class="app-page" data-page="dashboard">
-      <section class="panel form-panel">
-        <h2 id="formTitle">新增紀錄</h2>
-        <form id="recordForm">
-          <div class="grid-4">
-            <label>
-              時間
-              <input id="datetimeInput" type="datetime-local" step="60" required />
-            </label>
-            <label>
-              Threads 人數（第一層）
-              <input id="threadsInput" type="number" min="0" step="1" required />
-            </label>
-            <label>
-              LINE 人數（第二層，可空）
-              <input id="lineInput" type="number" min="0" step="1" />
-            </label>
-            <label>
-              備註
-              <input id="noteInput" type="text" maxlength="120" placeholder="貼文、活動、合作..." />
-            </label>
-          </div>
-          <div class="actions">
-            <button id="saveRecordBtn" type="submit">儲存紀錄</button>
-            <button type="button" id="resetFormBtn" class="secondary">清空</button>
-          </div>
-        </form>
-      </section>
-
-      <section class="panel filter-panel">
-        <div class="filter-head">
-          <h2>區間與績效</h2>
-          <div class="filter-row">
-            <label>
-              區間
-              <select id="rangeSelect">
-                <option value="today">今日</option>
-                <option value="7d">近 7 天</option>
-                <option value="30d" selected>近 30 天</option>
-                <option value="custom">自訂</option>
-              </select>
-            </label>
-            <label>
-              開始
-              <input id="startDate" type="datetime-local" disabled />
-            </label>
-            <label>
-              結束
-              <input id="endDate" type="datetime-local" disabled />
-            </label>
-            <button id="applyRangeBtn" type="button">套用</button>
-          </div>
-        </div>
-
-        <div class="kpi-grid">
-          <article class="kpi-card kpi-conv-latest">
-            <p>最新轉換率</p>
-            <h3 id="latestConversion">--</h3>
-          </article>
-          <article class="kpi-card kpi-conv">
-            <p>區間平均轉換率</p>
-            <h3 id="avgConversion">--</h3>
-          </article>
-          <article class="kpi-card kpi-th">
-            <p>Threads 增長率</p>
-            <h3 id="threadsGrowth">--</h3>
-          </article>
-          <article class="kpi-card kpi-li">
-            <p>LINE 增長率</p>
-            <h3 id="lineGrowth">--</h3>
-          </article>
+      <section class="panel dashboard-subnav-panel">
+        <div class="dashboard-subnav">
+          <button class="nav-btn dashboard-subnav-btn" data-dashboard-tab="board" type="button">數據看板</button>
+          <button class="nav-btn dashboard-subnav-btn" data-dashboard-tab="records" type="button">資料管理中心</button>
+          <button class="nav-btn dashboard-subnav-btn" data-dashboard-tab="kpi" type="button">KPI 管理</button>
         </div>
       </section>
 
-      <section class="panel chart-panel">
-        <div class="chart-header">
-          <div>
-            <h2>粉絲增長趨勢圖</h2>
-            <p>雙軸趨勢圖（滾輪縮放、拖拉框選縮放、Shift+拖曳平移）</p>
+      <section class="dashboard-subpage" data-dashboard-subpage="board">
+        <section class="panel filter-panel">
+          <div class="filter-head">
+            <h2>區間與績效</h2>
+            <div class="filter-row">
+              <label>
+                區間
+                <select id="rangeSelect">
+                  <option value="today">今日</option>
+                  <option value="7d">近 7 天</option>
+                  <option value="30d" selected>近 30 天</option>
+                  <option value="custom">自訂</option>
+                </select>
+              </label>
+              <label>
+                開始
+                <input id="startDate" type="datetime-local" disabled />
+              </label>
+              <label>
+                結束
+                <input id="endDate" type="datetime-local" disabled />
+              </label>
+              <button id="applyRangeBtn" type="button">套用</button>
+            </div>
           </div>
-          <div class="chart-controls">
-            <label class="chart-toggle">
-              <input id="showNoteLines" type="checkbox" checked />
-              顯示備註事件線
-            </label>
-            <button id="exportPdfBtn" type="button" class="ghost">匯出 PDF 報告</button>
-            <button id="resetZoomBtn" type="button" class="ghost">重設縮放</button>
+
+          <div class="kpi-grid">
+            <article class="kpi-card kpi-conv-latest">
+              <p>最新轉換率</p>
+              <h3 id="latestConversion">--</h3>
+            </article>
+            <article class="kpi-card kpi-conv">
+              <p>區間平均轉換率</p>
+              <h3 id="avgConversion">--</h3>
+            </article>
+            <article class="kpi-card kpi-th">
+              <p id="stage1GrowthLabel">第一層增長率</p>
+              <h3 id="threadsGrowth">--</h3>
+            </article>
+            <article class="kpi-card kpi-li">
+              <p id="stage2GrowthLabel">第二層增長率</p>
+              <h3 id="lineGrowth">--</h3>
+            </article>
           </div>
-        </div>
-        <div class="chart-wrap">
-          <canvas id="trendCanvas"></canvas>
-        </div>
+          <div class="platform-kpi-grid" id="platformKpiGrid"></div>
+        </section>
+
+        <section class="panel report-panel">
+          <div class="table-head">
+            <h2>報告匯出</h2>
+            <div class="table-tools">
+              <button id="exportPdfBtn" type="button" class="ghost">匯出增長 PDF 報告</button>
+            </div>
+          </div>
+          <p class="helper-text">匯出整個增長數據（非目前區間）為中文 PDF 報告。</p>
+        </section>
+
+        <section class="panel chart-panel">
+          <div class="chart-header">
+            <div>
+              <h2>粉絲增長趨勢圖</h2>
+              <p>可切換單平台/多平台比較（滾輪縮放、拖拉框選縮放、Shift+拖曳平移）</p>
+            </div>
+            <div class="chart-controls">
+              <label class="chart-inline-field">
+                顯示模式
+                <select id="trendModeSelect">
+                  <option value="single">單平台顯示</option>
+                  <option value="multi">多平台比較</option>
+                </select>
+              </label>
+              <label class="chart-inline-field" id="trendSingleStageWrap">
+                平台
+                <select id="trendSingleStageSelect"></select>
+              </label>
+              <div id="trendStageMultiOptions" class="trend-stage-multi-options"></div>
+              <label class="chart-toggle">
+                <input id="showNoteLines" type="checkbox" checked />
+                顯示備註事件線
+              </label>
+              <button id="resetZoomBtn" type="button" class="ghost">重設縮放</button>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="trendCanvas"></canvas>
+          </div>
+        </section>
+
+        <section class="panel chart-panel">
+          <div class="chart-header">
+            <div>
+              <h2>整體轉換率趨勢</h2>
+              <p>依區間自動切換時/日/週/月粒度的整體轉換率趨勢圖（%）</p>
+            </div>
+            <div class="chart-controls">
+              <button id="resetConversionZoomBtn" type="button" class="ghost">重設縮放</button>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="conversionTrendCanvas"></canvas>
+          </div>
+        </section>
       </section>
 
-      <section class="panel table-panel">
-        <div class="table-head">
-          <h2>紀錄列表</h2>
-          <div class="table-tools">
-            <label class="search-label">
-              搜尋
-              <input id="recordSearchInput" type="text" placeholder="時間 / 備註 / 數值" />
-            </label>
-            <label class="sort-label">
-              排序
-              <select id="sortOrderSelect">
-                <option value="time_desc" selected>時間降冪</option>
-                <option value="time_asc">時間升冪</option>
-              </select>
-            </label>
-            <button id="clearAllRecordsBtn" type="button" class="danger">全部刪除</button>
+      <section class="dashboard-subpage" data-dashboard-subpage="records">
+        <section class="panel funnel-panel" id="funnelPanel">
+          <div class="table-head">
+            <h2>資料輸入與階層設定</h2>
           </div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>時間</th>
-                <th>Threads</th>
-                <th>LINE</th>
-                <th>轉換率</th>
-                <th>備註</th>
-                <th>事件線</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody id="recordTableBody"></tbody>
-          </table>
-        </div>
+          <div class="funnel-layout">
+            <section class="funnel-config">
+              <h3>平台階層設定</h3>
+              <p class="helper-text">拖曳卡片可直接調整階層順序（由上到下）。</p>
+              <div class="funnel-stage-add">
+                <input id="funnelStageNameInput" type="text" maxlength="40" placeholder="例如：IG、Discord、Telegram" />
+                <button id="addFunnelStageBtn" type="button" class="secondary">新增平台</button>
+              </div>
+              <div id="funnelStageList" class="funnel-stage-list"></div>
+            </section>
+            <section class="funnel-snapshot">
+              <h3>新增快照</h3>
+              <form id="funnelSnapshotForm">
+                <label>
+                  時間
+                  <input id="funnelDatetimeInput" type="datetime-local" step="60" required />
+                </label>
+                <div id="funnelStageInputs" class="funnel-stage-inputs"></div>
+                <label>
+                  備註
+                  <input id="funnelNoteInput" type="text" maxlength="80" placeholder="可填活動或貼文事件" />
+                </label>
+                <div class="actions">
+                  <button id="saveFunnelSnapshotBtn" type="submit">儲存快照</button>
+                  <button id="resetFunnelSnapshotBtn" type="button" class="secondary">清空</button>
+                </div>
+              </form>
+            </section>
+          </div>
+          <section class="funnel-summary" id="funnelSummaryBody"></section>
+        </section>
+
+        <section class="panel table-panel">
+          <div class="table-head">
+            <h2>紀錄列表</h2>
+            <div class="table-tools">
+              <label class="search-label">
+                搜尋
+                <input id="recordSearchInput" type="text" placeholder="時間 / 備註 / 數值" />
+              </label>
+              <label class="sort-label">
+                排序
+                <select id="sortOrderSelect">
+                  <option value="time_desc" selected>時間降冪</option>
+                  <option value="time_asc">時間升冪</option>
+                </select>
+              </label>
+              <button id="clearAllRecordsBtn" type="button" class="danger">全部刪除</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>時間</th>
+                  <th id="stage1TableHeader">第一層</th>
+                  <th id="stage2TableHeader">第二層</th>
+                  <th>備註</th>
+                  <th>事件線</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="recordTableBody"></tbody>
+            </table>
+          </div>
+        </section>
       </section>
+
+      <section class="dashboard-subpage" data-dashboard-subpage="kpi">
+        <section class="panel kpi-manage-panel">
+          <div class="table-head">
+            <h2>KPI 管理</h2>
+            <div class="table-tools">
+              <label class="search-label">
+                搜尋
+                <input id="kpiSearchInput" type="text" placeholder="名稱 / 備註 / 單位 / 日期" />
+              </label>
+              <button id="clearAllKpiBtn" type="button" class="danger">全部刪除</button>
+            </div>
+          </div>
+          <form id="kpiForm">
+            <div class="grid-4">
+              <label>
+                KPI 名稱
+                <input id="kpiNameInput" type="text" maxlength="80" placeholder="例如：LINE 新增好友" required />
+              </label>
+              <label>
+                目標值
+                <input id="kpiTargetInput" type="number" min="0" step="0.01" required />
+              </label>
+              <label>
+                自動關聯數據
+                <select id="kpiMetricSelect">
+                  <option value="stage1_latest">第一層最新人數</option>
+                  <option value="stage2_latest">第二層最新人數</option>
+                  <option value="latest_conversion">最新轉換率</option>
+                  <option value="avg_conversion">區間平均轉換率</option>
+                  <option value="stage1_growth">第一層增長率</option>
+                  <option value="stage2_growth">第二層增長率</option>
+                </select>
+              </label>
+              <label>
+                單位
+                <input id="kpiUnitInput" type="text" maxlength="20" placeholder="人、篇、元..." />
+              </label>
+            </div>
+            <div class="grid-4">
+              <label>
+                截止日
+                <input id="kpiDeadlineInput" type="date" />
+              </label>
+              <label>
+                備註
+                <input id="kpiNoteInput" type="text" maxlength="120" placeholder="例如：Q1 活動目標" />
+              </label>
+            </div>
+            <div class="actions">
+              <button id="saveKpiBtn" type="submit">儲存 KPI</button>
+              <button id="resetKpiBtn" type="button" class="secondary">清空</button>
+            </div>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>KPI</th>
+                  <th>目標</th>
+                  <th>目前</th>
+                  <th>進度</th>
+                  <th>期限</th>
+                  <th>備註</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="kpiTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </section>
+
+    <section hidden aria-hidden="true">
+      <form id="recordForm">
+        <input id="datetimeInput" type="datetime-local" />
+        <input id="threadsInput" type="number" />
+        <input id="lineInput" type="number" />
+        <input id="noteInput" type="text" />
+        <span id="stage1FormLabel"></span>
+        <span id="stage2FormLabel"></span>
+        <button id="saveRecordBtn" type="submit"></button>
+        <button id="resetFormBtn" type="button"></button>
+      </form>
     </section>
 
     <section id="contentPage" class="app-page" data-page="content">
@@ -285,7 +426,6 @@
       <td data-col="dt"></td>
       <td data-col="threads"></td>
       <td data-col="line"></td>
-      <td data-col="conversion"></td>
       <td data-col="note"></td>
       <td data-col="noteLine"></td>
       <td class="row-actions">
