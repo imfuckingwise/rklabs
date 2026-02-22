@@ -55,7 +55,7 @@
       <section class="tool-grid">
         <article class="panel tool-card actionable" data-route="dashboard">
           <h3>儀表板</h3>
-          <p>追蹤漏斗前兩層平台，查看轉換率、增長曲線、事件標記與存檔。</p>
+          <p>追蹤漏斗平台節點與連線，查看轉換率、增長曲線、事件標記與存檔。</p>
           <button class="ghost" type="button">進入工具</button>
         </article>
         <article class="panel tool-card coming-soon">
@@ -76,7 +76,6 @@
         <div class="dashboard-subnav">
           <button class="nav-btn dashboard-subnav-btn" data-dashboard-tab="board" type="button">數據看板</button>
           <button class="nav-btn dashboard-subnav-btn" data-dashboard-tab="records" type="button">資料管理中心</button>
-          <button class="nav-btn dashboard-subnav-btn" data-dashboard-tab="kpi" type="button">KPI 管理</button>
         </div>
       </section>
 
@@ -121,16 +120,7 @@
           <div class="chart-wrap">
             <canvas id="trendCanvas"></canvas>
           </div>
-          <div class="kpi-grid kpi-grid-growth">
-            <article class="kpi-card kpi-th">
-              <p id="stage1GrowthLabel">第一層增長率</p>
-              <h3 id="threadsGrowth">--</h3>
-            </article>
-            <article class="kpi-card kpi-li">
-              <p id="stage2GrowthLabel">第二層增長率</p>
-              <h3 id="lineGrowth">--</h3>
-            </article>
-          </div>
+          <div class="kpi-grid kpi-grid-growth" id="growthKpiGrid"></div>
           <div class="platform-kpi-grid" id="platformKpiGrid"></div>
           <div class="chart-range-row">
             <label>
@@ -167,16 +157,6 @@
           <div class="chart-wrap">
             <canvas id="conversionTrendCanvas"></canvas>
           </div>
-          <div class="kpi-grid kpi-grid-conversion">
-            <article class="kpi-card kpi-conv-latest">
-              <p>最新轉換率</p>
-              <h3 id="latestConversion">--</h3>
-            </article>
-            <article class="kpi-card kpi-conv">
-              <p>區間平均轉換率</p>
-              <h3 id="avgConversion">--</h3>
-            </article>
-          </div>
           <div class="chart-range-row">
             <label>
               區間
@@ -201,41 +181,55 @@
       </section>
 
       <section class="dashboard-subpage" data-dashboard-subpage="records">
-        <section class="panel funnel-panel" id="funnelPanel">
-          <div class="table-head">
-            <h2>資料輸入與階層設定</h2>
-          </div>
-          <div class="funnel-layout">
+        <div class="records-top-grid">
+          <section class="panel funnel-snapshot-panel">
+            <h2>新增快照</h2>
+            <form id="funnelSnapshotForm">
+              <label>
+                時間
+                <input id="funnelDatetimeInput" type="datetime-local" step="60" required />
+              </label>
+              <div id="funnelStageInputs" class="funnel-stage-inputs"></div>
+              <label>
+                備註
+                <input id="funnelNoteInput" type="text" maxlength="80" placeholder="可填活動或貼文事件" />
+              </label>
+              <div class="actions">
+                <button id="saveFunnelSnapshotBtn" type="submit">儲存快照</button>
+                <button id="resetFunnelSnapshotBtn" type="button" class="secondary">清空</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel funnel-panel" id="funnelPanel">
+            <div class="table-head">
+              <h2>資料輸入與平台設定</h2>
+            </div>
             <section class="funnel-config">
-              <h3>平台階層設定</h3>
-              <p class="helper-text">拖曳卡片可直接調整階層順序（由上到下）。</p>
+              <h3>平台設定</h3>
+              <p class="helper-text">拖曳卡片可直接調整平台順序；平台關係以箭頭連線為準。</p>
               <div class="funnel-stage-add">
                 <input id="funnelStageNameInput" type="text" maxlength="40" placeholder="例如：IG、Discord、Telegram" />
                 <button id="addFunnelStageBtn" type="button" class="secondary">新增平台</button>
               </div>
-              <div id="funnelStageList" class="funnel-stage-list"></div>
-            </section>
-            <section class="funnel-snapshot">
-              <h3>新增快照</h3>
-              <form id="funnelSnapshotForm">
-                <label>
-                  時間
-                  <input id="funnelDatetimeInput" type="datetime-local" step="60" required />
-                </label>
-                <div id="funnelStageInputs" class="funnel-stage-inputs"></div>
-                <label>
-                  備註
-                  <input id="funnelNoteInput" type="text" maxlength="80" placeholder="可填活動或貼文事件" />
-                </label>
-                <div class="actions">
-                  <button id="saveFunnelSnapshotBtn" type="submit">儲存快照</button>
-                  <button id="resetFunnelSnapshotBtn" type="button" class="secondary">清空</button>
+              <div class="funnel-link-toolbar">
+                <button id="toggleLinkModeBtn" type="button" class="ghost">連線模式：關閉</button>
+                <div class="funnel-canvas-zoom">
+                  <button id="funnelZoomOutBtn" type="button" class="ghost" aria-label="縮小畫布">-</button>
+                  <span id="funnelZoomLabel">100%</span>
+                  <button id="funnelZoomInBtn" type="button" class="ghost" aria-label="放大畫布">+</button>
+                  <button id="funnelZoomResetBtn" type="button" class="ghost">重設</button>
                 </div>
-              </form>
+                <span id="linkModeStatus" class="helper-text">提示：開啟後，依序點兩個節點建立/取消箭頭；點箭頭可刪除</span>
+              </div>
+              <div class="funnel-graph" id="funnelGraphCanvas">
+                <svg id="funnelGraphSvg" class="funnel-graph-svg" aria-hidden="true"></svg>
+                <div id="funnelStageList" class="funnel-stage-list"></div>
+              </div>
             </section>
-          </div>
-          <section class="funnel-summary" id="funnelSummaryBody"></section>
-        </section>
+            <section class="funnel-summary" id="funnelSummaryBody"></section>
+          </section>
+        </div>
 
         <section class="panel table-panel">
           <div class="table-head">
@@ -257,11 +251,10 @@
           </div>
           <div class="table-wrap">
             <table>
-              <thead>
+              <thead id="recordTableHead">
                 <tr>
                   <th>時間</th>
-                  <th id="stage1TableHeader">第一層</th>
-                  <th id="stage2TableHeader">第二層</th>
+                  <th>平台</th>
                   <th>備註</th>
                   <th>事件線</th>
                   <th>操作</th>
@@ -273,77 +266,6 @@
         </section>
       </section>
 
-      <section class="dashboard-subpage" data-dashboard-subpage="kpi">
-        <section class="panel kpi-manage-panel">
-          <div class="table-head">
-            <h2>KPI 管理</h2>
-            <div class="table-tools">
-              <label class="search-label">
-                搜尋
-                <input id="kpiSearchInput" type="text" placeholder="名稱 / 備註 / 單位 / 日期" />
-              </label>
-              <button id="clearAllKpiBtn" type="button" class="danger">全部刪除</button>
-            </div>
-          </div>
-          <form id="kpiForm">
-            <div class="grid-4">
-              <label>
-                KPI 名稱
-                <input id="kpiNameInput" type="text" maxlength="80" placeholder="例如：LINE 新增好友" required />
-              </label>
-              <label>
-                目標值
-                <input id="kpiTargetInput" type="number" min="0" step="0.01" required />
-              </label>
-              <label>
-                自動關聯數據
-                <select id="kpiMetricSelect">
-                  <option value="stage1_latest">第一層最新人數</option>
-                  <option value="stage2_latest">第二層最新人數</option>
-                  <option value="latest_conversion">最新轉換率</option>
-                  <option value="avg_conversion">區間平均轉換率</option>
-                  <option value="stage1_growth">第一層增長率</option>
-                  <option value="stage2_growth">第二層增長率</option>
-                </select>
-              </label>
-              <label>
-                單位
-                <input id="kpiUnitInput" type="text" maxlength="20" placeholder="人、篇、元..." />
-              </label>
-            </div>
-            <div class="grid-4">
-              <label>
-                截止日
-                <input id="kpiDeadlineInput" type="date" />
-              </label>
-              <label>
-                備註
-                <input id="kpiNoteInput" type="text" maxlength="120" placeholder="例如：Q1 活動目標" />
-              </label>
-            </div>
-            <div class="actions">
-              <button id="saveKpiBtn" type="submit">儲存 KPI</button>
-              <button id="resetKpiBtn" type="button" class="secondary">清空</button>
-            </div>
-          </form>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>KPI</th>
-                  <th>目標</th>
-                  <th>目前</th>
-                  <th>進度</th>
-                  <th>期限</th>
-                  <th>備註</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody id="kpiTableBody"></tbody>
-            </table>
-          </div>
-        </section>
-      </section>
     </section>
 
     <section hidden aria-hidden="true">

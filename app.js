@@ -6,6 +6,11 @@ const FUNNEL_STAGE_STORE_NAME = "funnelStages";
 const FUNNEL_SNAPSHOT_STORE_NAME = "funnelSnapshots";
 const KPI_STORE_NAME = "kpiItems";
 const CONTENT_REF_MAX_LEN = 2048;
+const FUNNEL_CARD_WIDTH = 230;
+const FUNNEL_CARD_HEIGHT = 92;
+const FUNNEL_CANVAS_MIN_HEIGHT = 520;
+const FUNNEL_ZOOM_MIN = 0.6;
+const FUNNEL_ZOOM_MAX = 1.8;
 function toRangeType(value) {
     if (value === "today" || value === "7d" || value === "30d" || value === "custom")
         return value;
@@ -39,6 +44,9 @@ const state = {
     singleTrendStageId: loadSingleTrendStageId(),
     multiTrendStageIds: loadMultiTrendStageIds(),
     editingId: null,
+    funnelEditingId: null,
+    linkModeEnabled: false,
+    linkModeFromStageId: "",
     contentEditingId: null,
     contentViewingId: null,
     kpiEditingId: null,
@@ -54,6 +62,18 @@ function byId(id, tag) {
     fallback.setAttribute("data-fallback-node", "1");
     document.body.appendChild(fallback);
     console.warn(`[AI Toolkit] Missing element #${id} (${tag}), injected fallback node.`);
+    return fallback;
+}
+function bySvgId(id) {
+    const node = document.getElementById(id);
+    if (node instanceof SVGSVGElement)
+        return node;
+    const fallback = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    fallback.setAttribute("id", id);
+    fallback.setAttribute("data-fallback-node", "1");
+    fallback.style.display = "none";
+    document.body.appendChild(fallback);
+    console.warn(`[AI Toolkit] Missing element #${id} (svg), injected fallback node.`);
     return fallback;
 }
 const els = {
@@ -81,12 +101,7 @@ const els = {
     conversionStartDate: byId("conversionStartDate", "input"),
     conversionEndDate: byId("conversionEndDate", "input"),
     applyConversionRangeBtn: byId("applyConversionRangeBtn", "button"),
-    latestConversion: byId("latestConversion", "h3"),
-    avgConversion: byId("avgConversion", "h3"),
-    threadsGrowth: byId("threadsGrowth", "h3"),
-    lineGrowth: byId("lineGrowth", "h3"),
-    stage1GrowthLabel: byId("stage1GrowthLabel", "p"),
-    stage2GrowthLabel: byId("stage2GrowthLabel", "p"),
+    growthKpiGrid: byId("growthKpiGrid", "div"),
     platformKpiGrid: byId("platformKpiGrid", "div"),
     trendCanvas: byId("trendCanvas", "canvas"),
     trendModeSelect: byId("trendModeSelect", "select"),
@@ -104,9 +119,8 @@ const els = {
     recordSearchInput: byId("recordSearchInput", "input"),
     clearAllRecordsBtn: byId("clearAllRecordsBtn", "button"),
     recordTableBody: byId("recordTableBody", "tbody"),
+    recordTableHead: byId("recordTableHead", "thead"),
     rowTemplate: byId("rowTemplate", "template"),
-    stage1TableHeader: byId("stage1TableHeader", "th"),
-    stage2TableHeader: byId("stage2TableHeader", "th"),
     exportBtn: byId("exportBtn", "button"),
     importInput: byId("importInput", "input"),
     clearCacheBtn: byId("clearCacheBtn", "button"),
@@ -132,7 +146,15 @@ const els = {
     clearAllContentBtn: byId("clearAllContentBtn", "button"),
     funnelStageNameInput: byId("funnelStageNameInput", "input"),
     addFunnelStageBtn: byId("addFunnelStageBtn", "button"),
+    toggleLinkModeBtn: byId("toggleLinkModeBtn", "button"),
+    funnelZoomOutBtn: byId("funnelZoomOutBtn", "button"),
+    funnelZoomInBtn: byId("funnelZoomInBtn", "button"),
+    funnelZoomResetBtn: byId("funnelZoomResetBtn", "button"),
+    funnelZoomLabel: byId("funnelZoomLabel", "span"),
+    linkModeStatus: byId("linkModeStatus", "span"),
+    funnelGraphCanvas: byId("funnelGraphCanvas", "div"),
     funnelStageList: byId("funnelStageList", "div"),
+    funnelGraphSvg: bySvgId("funnelGraphSvg"),
     funnelSnapshotForm: byId("funnelSnapshotForm", "form"),
     funnelDatetimeInput: byId("funnelDatetimeInput", "input"),
     funnelStageInputs: byId("funnelStageInputs", "div"),
@@ -157,7 +179,10 @@ let db = null;
 let trendChart = null;
 let conversionTrendChart = null;
 let pdfChineseFontBase64 = "";
-let draggingFunnelStageId = "";
+let funnelDragState = null;
+let isFunnelDrawScheduled = false;
+let lastFunnelDragEndedAt = 0;
+let funnelCanvasZoom = 1;
 init();
 async function init() {
     registerChartZoomPlugin();
@@ -187,13 +212,16 @@ async function init() {
     state.funnelSnapshots = await getAllFunnelSnapshots();
     state.kpiItems = ensureKpiDefaults(await getAllKpiItems());
     if (!state.lastEditedAt) {
-        state.lastEditedAt = computeLastEditedAtFromData(state.records, state.contentItems, state.funnelStages, state.funnelSnapshots, state.kpiItems);
+        state.lastEditedAt = computeLastEditedAtFromData(state.records, state.contentItems, state.funnelStages, state.funnelSnapshots);
     }
     render();
     setStorageStatus("");
 }
 function wireEvents() {
     window.addEventListener("hashchange", syncRouteFromHash);
+    window.addEventListener("resize", () => {
+        scheduleDrawFunnelGraphEdges();
+    });
     els.routeTriggers.forEach((node) => {
         node.addEventListener("click", () => {
             const route = node.dataset.route || "home";
@@ -216,15 +244,23 @@ function wireEvents() {
     els.contentForm.addEventListener("submit", onSaveContentItem);
     els.resetContentBtn.addEventListener("click", resetContentFormMode);
     els.addFunnelStageBtn.addEventListener("click", onAddFunnelStage);
+    els.toggleLinkModeBtn.addEventListener("click", () => {
+        state.linkModeEnabled = !state.linkModeEnabled;
+        state.linkModeFromStageId = "";
+        renderFunnelLinkModeUi();
+        renderFunnelStages();
+    });
+    els.funnelZoomOutBtn.addEventListener("click", () => setFunnelCanvasZoom(funnelCanvasZoom - 0.1));
+    els.funnelZoomInBtn.addEventListener("click", () => setFunnelCanvasZoom(funnelCanvasZoom + 0.1));
+    els.funnelZoomResetBtn.addEventListener("click", () => setFunnelCanvasZoom(1));
+    els.funnelGraphCanvas.addEventListener("wheel", onFunnelCanvasWheel, { passive: false });
     els.funnelStageList.addEventListener("click", onFunnelStageListClick);
-    els.funnelStageList.addEventListener("dragstart", onFunnelStageDragStart);
-    els.funnelStageList.addEventListener("dragover", onFunnelStageDragOver);
-    els.funnelStageList.addEventListener("drop", onFunnelStageDrop);
-    els.funnelStageList.addEventListener("dragend", onFunnelStageDragEnd);
+    els.funnelGraphSvg.addEventListener("click", onFunnelEdgeClick);
+    els.funnelStageList.addEventListener("mousedown", onFunnelStageCanvasMouseDown);
+    window.addEventListener("mousemove", onFunnelStageCanvasMouseMove);
+    window.addEventListener("mouseup", onFunnelStageCanvasMouseUp);
     els.funnelSnapshotForm.addEventListener("submit", onSaveFunnelSnapshot);
     els.resetFunnelSnapshotBtn.addEventListener("click", resetFunnelSnapshotForm);
-    els.kpiForm.addEventListener("submit", onSaveKpiItem);
-    els.resetKpiBtn.addEventListener("click", resetKpiFormMode);
     els.trendRangeSelect.addEventListener("change", () => {
         const custom = els.trendRangeSelect.value === "custom";
         els.trendStartDate.disabled = !custom;
@@ -259,8 +295,10 @@ function wireEvents() {
             return;
         const action = target.dataset.action;
         if (action === "edit") {
-            goToFunnelSection();
-            alert("此紀錄與快照為同一資料，請在「資料管理中心」編輯或重建快照。");
+            const id = Number(target.dataset.id);
+            if (!Number.isFinite(id))
+                return;
+            startEditFunnelSnapshot(id);
             return;
         }
         if (action === "delete") {
@@ -271,6 +309,8 @@ function wireEvents() {
             state.funnelSnapshots = await getAllFunnelSnapshots();
             if (state.editingId === id)
                 resetFormMode();
+            if (state.funnelEditingId === id)
+                resetFunnelSnapshotForm();
             markDataEdited();
             render();
         }
@@ -393,11 +433,6 @@ function wireEvents() {
         persistContentSearch(state.contentSearch);
         render();
     });
-    els.kpiSearchInput.addEventListener("input", () => {
-        state.kpiSearch = els.kpiSearchInput.value.trim();
-        persistKpiSearch(state.kpiSearch);
-        render();
-    });
     els.clearAllRecordsBtn.addEventListener("click", async () => {
         const ok = confirmTwice("將刪除所有增長儀表板紀錄，確定要繼續嗎？", "最後確認：確定刪除全部增長儀表板紀錄？");
         if (!ok)
@@ -418,36 +453,6 @@ function wireEvents() {
         state.contentItems = [];
         state.contentViewingId = null;
         resetContentFormMode();
-        markDataEdited();
-        render();
-    });
-    els.kpiTableBody.addEventListener("click", async (e) => {
-        const target = e.target;
-        if (!(target instanceof HTMLButtonElement))
-            return;
-        const id = Number(target.dataset.id);
-        if (!Number.isFinite(id))
-            return;
-        if (target.dataset.action === "edit-kpi") {
-            startEditKpi(id);
-            return;
-        }
-        if (target.dataset.action === "delete-kpi") {
-            await deleteKpiItem(id);
-            state.kpiItems = ensureKpiDefaults(await getAllKpiItems());
-            if (state.kpiEditingId === id)
-                resetKpiFormMode();
-            markDataEdited();
-            render();
-        }
-    });
-    els.clearAllKpiBtn.addEventListener("click", async () => {
-        const ok = confirmTwice("將刪除所有 KPI，確定要繼續嗎？", "最後確認：確定刪除全部 KPI？");
-        if (!ok)
-            return;
-        await clearAllKpiOnly();
-        state.kpiItems = [];
-        resetKpiFormMode();
         markDataEdited();
         render();
     });
@@ -525,6 +530,11 @@ function onExport() {
                     id: x.id,
                     name: x.name,
                     order: x.order,
+                    layer: x.layer,
+                    x: x.x,
+                    y: x.y,
+                    prev_ids: x.prevIds || [],
+                    next_ids: x.nextIds || [],
                 })),
                 snapshots: state.funnelSnapshots
                     .slice()
@@ -534,16 +544,6 @@ function onExport() {
                     values: x.values,
                     note: x.note || "",
                     note_line_enabled: x.noteLineEnabled !== false,
-                })),
-            },
-            kpi: {
-                items: state.kpiItems.map((x) => ({
-                    name: x.name,
-                    target: x.target,
-                    metric_key: toKpiMetricKey(x.metricKey),
-                    unit: x.unit,
-                    deadline: x.deadline || "",
-                    note: x.note || "",
                 })),
             },
         },
@@ -727,8 +727,7 @@ async function onImport(event) {
             Array.isArray(data?.records) ||
             Array.isArray(data?.modules?.content_library?.items) ||
             Array.isArray(data?.modules?.funnel?.stages) ||
-            Array.isArray(data?.modules?.funnel?.snapshots) ||
-            Array.isArray(data?.modules?.kpi?.items);
+            Array.isArray(data?.modules?.funnel?.snapshots);
         if (!hasAnyModuleData) {
             throw new Error("格式不正確，缺少可用的模組資料");
         }
@@ -746,6 +745,11 @@ async function onImport(event) {
                     id: `stage-${Date.now()}-1`,
                     name: "平台A",
                     order: 0,
+                    layer: 1,
+                    x: 24,
+                    y: 24,
+                    prevIds: [],
+                    nextIds: [],
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                 },
@@ -753,6 +757,11 @@ async function onImport(event) {
                     id: `stage-${Date.now()}-2`,
                     name: "平台B",
                     order: 1,
+                    layer: 2,
+                    x: 300,
+                    y: 24,
+                    prevIds: [],
+                    nextIds: [],
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                 },
@@ -761,7 +770,6 @@ async function onImport(event) {
         const importedSnapshots = normalizeImportedFunnelSnapshots(extractFunnelSnapshotRowsFromPayload(data), funnelStages);
         const snapshotsFromDashboard = convertDashboardRecordsToSnapshots(validDashboardRecords, funnelStages);
         const funnelSnapshots = dedupeFunnelSnapshots([...importedSnapshots, ...snapshotsFromDashboard], funnelStages);
-        const kpiItems = normalizeImportedKpiItems(extractKpiRowsFromPayload(data));
         const importedRoleId = extractRoleIdFromPayload(data);
         if (importedRoleId) {
             state.roleId = importedRoleId;
@@ -779,17 +787,13 @@ async function onImport(event) {
             await putFunnelSnapshot(snapshot);
         }
         await clearAllRecordsOnly();
-        for (const item of kpiItems) {
-            await putKpiItem(item);
-        }
         state.records = ensureRecordDefaults(await getAllRecords());
         state.contentItems = await getAllContentItems();
         state.funnelStages = await getAllFunnelStages();
         state.funnelSnapshots = await getAllFunnelSnapshots();
-        state.kpiItems = ensureKpiDefaults(await getAllKpiItems());
         markDataEdited();
         render();
-        alert(`已匯入：紀錄/快照 ${funnelSnapshots.length} 筆、素材 ${validContent.length} 筆、漏斗階層 ${funnelStages.length} 筆、KPI ${kpiItems.length} 筆`);
+        alert(`已匯入：紀錄/快照 ${funnelSnapshots.length} 筆、素材 ${validContent.length} 筆、漏斗平台 ${funnelStages.length} 筆`);
     }
     catch (err) {
         alert(`匯入失敗: ${err.message}`);
@@ -824,14 +828,13 @@ function render() {
     const conversionVisible = filterByRange(dashboardRecords, state.conversionRange);
     const conversionVisibleSnapshots = filterFunnelSnapshotsByRange(state.funnelSnapshots, state.conversionRange);
     renderTrendStageControls();
-    renderKpi(visible);
+    renderGrowthKpiCards(visibleSnapshots);
     renderPlatformKpiCards(visibleSnapshots);
     renderTable(filterRecordsByKeyword(dashboardRecords, state.recordSearch));
     renderChart(visible, visibleSnapshots);
     renderConversionTrendChart(conversionVisibleSnapshots, conversionVisible);
     renderFunnelStages();
     renderFunnelSummary();
-    renderKpiTable(filterKpiByKeyword(state.kpiItems, state.kpiSearch));
     const filteredContentItems = filterContentByKeyword(state.contentItems, state.contentSearch);
     renderContentTable(filteredContentItems);
     renderContentViewer(filteredContentItems);
@@ -857,6 +860,7 @@ function getDashboardRecordsForView() {
             datetime: snap.datetime,
             threads: Math.floor(threads),
             line: line === null ? null : Math.floor(line),
+            stageValues: { ...(snap.values || {}) },
             note: snap.note || "",
             noteLineEnabled: typeof snap.noteLineEnabled === "boolean"
                 ? snap.noteLineEnabled
@@ -874,23 +878,25 @@ function getSortedFunnelStages() {
 }
 function getDashboardStages() {
     const stages = getSortedFunnelStages();
-    const firstStage = stages[0];
-    const secondStage = stages[1] || stages[0];
+    const byId = new Map(stages.map((x) => [x.id, x]));
+    const firstStage = stages.find((x) => !(x.prevIds || []).length) ||
+        stages[0];
+    const secondStage = (firstStage?.nextIds || [])
+        .map((id) => byId.get(id))
+        .find((x) => !!x) ||
+        stages.find((x) => x.id !== firstStage?.id) ||
+        firstStage;
     return {
-        first: firstStage?.name || "第一層平台",
-        second: secondStage?.name || "第二層平台",
+        first: firstStage?.name || "主要平台",
+        second: secondStage?.name || "次要平台",
         firstId: firstStage?.id || "",
         secondId: secondStage?.id || "",
     };
 }
 function applyDashboardStageLabels() {
     const stages = getDashboardStages();
-    els.stage1FormLabel.textContent = `${stages.first} 人數（第一層）`;
-    els.stage2FormLabel.textContent = `${stages.second} 人數（第二層，可空）`;
-    els.stage1GrowthLabel.textContent = `${stages.first} 增長率`;
-    els.stage2GrowthLabel.textContent = `${stages.second} 增長率`;
-    els.stage1TableHeader.textContent = stages.first;
-    els.stage2TableHeader.textContent = stages.second;
+    els.stage1FormLabel.textContent = `${stages.first} 人數（主要）`;
+    els.stage2FormLabel.textContent = `${stages.second} 人數（次要，可空）`;
     updateKpiMetricOptionLabels(stages);
 }
 function updateKpiMetricOptionLabels(stageNames) {
@@ -900,10 +906,10 @@ function updateKpiMetricOptionLabels(stageNames) {
         if (opt)
             opt.textContent = label;
     };
-    setLabel("stage1_latest", `第一層最新人數（${stageNames.first}）`);
-    setLabel("stage2_latest", `第二層最新人數（${stageNames.second}）`);
-    setLabel("stage1_growth", `第一層增長率（${stageNames.first}）`);
-    setLabel("stage2_growth", `第二層增長率（${stageNames.second}）`);
+    setLabel("stage1_latest", `主要平台最新人數（${stageNames.first}）`);
+    setLabel("stage2_latest", `次要平台最新人數（${stageNames.second}）`);
+    setLabel("stage1_growth", `主要平台增長率（${stageNames.first}）`);
+    setLabel("stage2_growth", `次要平台增長率（${stageNames.second}）`);
 }
 function renderTrendStageControls() {
     const stages = getSortedFunnelStages();
@@ -987,8 +993,6 @@ function normalizeRoute(route) {
 function toDashboardTab(value) {
     if (value === "board")
         return "board";
-    if (value === "kpi")
-        return "kpi";
     return "records";
 }
 function applyDashboardTabToUi() {
@@ -1035,25 +1039,52 @@ function setActivePage(route) {
 }
 function renderTable(records) {
     els.recordTableBody.innerHTML = "";
-    const stageNames = getDashboardStages();
+    const stages = getSortedFunnelStages();
+    const stageIdSet = new Set(stages.map((s) => s.id));
+    const columns = stages.slice();
+    const extraStageIds = new Set();
+    for (const record of records) {
+        for (const stageId of Object.keys(record.stageValues || {})) {
+            if (!stageIdSet.has(stageId))
+                extraStageIds.add(stageId);
+        }
+    }
+    for (const stageId of extraStageIds) {
+        columns.push({
+            id: stageId,
+            name: stageId,
+            order: Number.MAX_SAFE_INTEGER,
+            layer: 99,
+            x: 0,
+            y: 0,
+            prevIds: [],
+            nextIds: [],
+            createdAt: "",
+            updatedAt: "",
+        });
+    }
+    renderRecordTableHead(columns);
     const sorted = sortRecordsForTable(records, state.sortOrder);
     for (const record of sorted) {
-        const row = els.rowTemplate.content.firstElementChild.cloneNode(true);
+        const row = document.createElement("tr");
         row.classList.add("record-row");
         row.dataset.recordId = String(record.id);
-        const dtCell = row.querySelector('[data-col="dt"]');
-        const threadsCell = row.querySelector('[data-col="threads"]');
-        const lineCell = row.querySelector('[data-col="line"]');
-        const noteCell = row.querySelector('[data-col="note"]');
-        dtCell.textContent = record.datetime;
-        threadsCell.textContent = String(record.threads);
-        lineCell.textContent = Number.isFinite(record.line) ? String(record.line) : "-";
-        noteCell.textContent = record.note || "-";
+        const dtCell = document.createElement("td");
         dtCell.dataset.label = "時間";
-        threadsCell.dataset.label = stageNames.first;
-        lineCell.dataset.label = stageNames.second;
+        dtCell.textContent = record.datetime;
+        row.appendChild(dtCell);
+        for (const stage of columns) {
+            const cell = document.createElement("td");
+            cell.dataset.label = stage.name;
+            const raw = record.stageValues?.[stage.id];
+            cell.textContent = Number.isFinite(raw) ? String(raw) : "-";
+            row.appendChild(cell);
+        }
+        const noteCell = document.createElement("td");
         noteCell.dataset.label = "備註";
-        const noteLineCell = row.querySelector('[data-col="noteLine"]');
+        noteCell.textContent = record.note || "-";
+        row.appendChild(noteCell);
+        const noteLineCell = document.createElement("td");
         noteLineCell.dataset.label = "事件線";
         if ((record.note || "").trim().length > 0) {
             const checkbox = document.createElement("input");
@@ -1067,41 +1098,70 @@ function renderTable(records) {
         else {
             noteLineCell.textContent = "-";
         }
-        const actionCell = row.querySelector(".row-actions");
+        row.appendChild(noteLineCell);
+        const actionCell = document.createElement("td");
+        actionCell.className = "row-actions";
         actionCell.dataset.label = "操作";
-        const editBtn = row.querySelector('[data-action="edit"]');
+        const editBtn = document.createElement("button");
+        editBtn.className = "ghost";
+        editBtn.dataset.action = "edit";
         editBtn.dataset.id = String(record.id);
-        editBtn.textContent = "來源";
-        const deleteBtn = row.querySelector('[data-action="delete"]');
+        editBtn.textContent = "編輯";
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "danger";
+        deleteBtn.dataset.action = "delete";
         deleteBtn.dataset.id = String(record.id);
+        deleteBtn.textContent = "刪除";
+        actionCell.appendChild(editBtn);
+        actionCell.appendChild(deleteBtn);
+        row.appendChild(actionCell);
         els.recordTableBody.appendChild(row);
     }
     if (sorted.length === 0) {
         const tr = document.createElement("tr");
-        tr.innerHTML = '<td colspan="6">目前區間沒有資料</td>';
+        const td = document.createElement("td");
+        td.colSpan = Math.max(4, columns.length + 4);
+        td.textContent = "目前沒有資料";
+        tr.appendChild(td);
         els.recordTableBody.appendChild(tr);
     }
 }
-function renderKpi(records) {
-    const sorted = [...records].sort((a, b) => a.timestamp - b.timestamp);
-    const conversions = sorted
-        .map((r) => safeRatio(r.line, r.threads))
-        .filter((v) => Number.isFinite(v));
-    const latestConvertible = [...sorted].reverse().find((r) => Number.isFinite(safeRatio(r.line, r.threads)));
-    const avgConversion = conversions.length
-        ? conversions.reduce((sum, val) => sum + val, 0) / conversions.length
-        : NaN;
-    const latestConversion = latestConvertible ? safeRatio(latestConvertible.line, latestConvertible.threads) : NaN;
-    const first = sorted[0];
-    const last = sorted[sorted.length - 1];
-    const firstLine = sorted.find((r) => Number.isFinite(r.line));
-    const lastLine = [...sorted].reverse().find((r) => Number.isFinite(r.line));
-    const threadsGrowth = first && last ? computeGrowthRateWithFloor(first.threads, last.threads, 1) : NaN;
-    const lineGrowth = firstLine && lastLine ? computeGrowthRate(firstLine.line, lastLine.line) : NaN;
-    els.latestConversion.textContent = formatPercent(latestConversion);
-    els.avgConversion.textContent = formatPercent(avgConversion);
-    els.threadsGrowth.textContent = formatSignedPercent(threadsGrowth);
-    els.lineGrowth.textContent = formatSignedPercent(lineGrowth);
+function renderRecordTableHead(columns) {
+    els.recordTableHead.innerHTML = "";
+    const tr = document.createElement("tr");
+    const thTime = document.createElement("th");
+    thTime.textContent = "時間";
+    tr.appendChild(thTime);
+    for (const stage of columns) {
+        const th = document.createElement("th");
+        th.textContent = stage.name;
+        tr.appendChild(th);
+    }
+    const thNote = document.createElement("th");
+    thNote.textContent = "備註";
+    tr.appendChild(thNote);
+    const thLine = document.createElement("th");
+    thLine.textContent = "事件線";
+    tr.appendChild(thLine);
+    const thAction = document.createElement("th");
+    thAction.textContent = "操作";
+    tr.appendChild(thAction);
+    els.recordTableHead.appendChild(tr);
+}
+function renderGrowthKpiCards(snapshots) {
+    els.growthKpiGrid.innerHTML = "";
+    const summaries = buildPlatformKpiSummaries(snapshots);
+    if (!summaries.length)
+        return;
+    for (const summary of summaries) {
+        const card = document.createElement("article");
+        card.className = "kpi-card";
+        card.innerHTML = `
+      <p>${escapeHtml(summary.name)} 增長率</p>
+      <h3>${formatSignedPercent(summary.growth)}</h3>
+    `;
+        els.growthKpiGrid.appendChild(card);
+    }
 }
 function renderPlatformKpiCards(snapshots) {
     els.platformKpiGrid.innerHTML = "";
@@ -1379,110 +1439,31 @@ function renderConversionTrendChart(snapshots, records) {
         drawEmptyChartMessage(ctx, els.conversionTrendCanvas, "目前區間沒有資料");
         return;
     }
-    const stageMap = new Map(getSortedFunnelStages().map((x) => [x.id, x.name]));
-    const stageIdsWithData = new Set();
-    for (const snapshot of snapshots) {
-        const values = snapshot.values || {};
-        for (const [stageId, raw] of Object.entries(values)) {
-            if (Number.isFinite(raw))
-                stageIdsWithData.add(stageId);
-        }
-    }
-    const orderedStageIds = [];
-    for (const stage of getSortedFunnelStages()) {
-        if (stageIdsWithData.has(stage.id))
-            orderedStageIds.push(stage.id);
-    }
-    for (const stageId of stageIdsWithData) {
-        if (!orderedStageIds.includes(stageId))
-            orderedStageIds.push(stageId);
-    }
-    const firstStageId = orderedStageIds[0] || "";
-    const secondStageId = orderedStageIds[1] || "";
-    const lastStageId = orderedStageIds[orderedStageIds.length - 1] || "";
-    const preferRecordSeriesForTwoStages = orderedStageIds.length === 2 && records.length > 0;
-    const canUseSnapshotSeries = snapshots.length > 0 &&
-        orderedStageIds.length >= 2 &&
-        !preferRecordSeriesForTwoStages &&
-        firstStageId !== "" &&
-        secondStageId !== "" &&
-        lastStageId !== "";
-    let pointTimestamps = [];
-    let pointRecordIds = [];
-    let datasets = [];
-    if (canUseSnapshotSeries) {
-        const firstName = stageMap.get(firstStageId) || "第一層";
-        const secondName = stageMap.get(secondStageId) || "第二層";
-        const lastName = stageMap.get(lastStageId) || "最後一層";
-        pointTimestamps = snapshots.map((x) => x.timestamp);
-        pointRecordIds = snapshots.map((x) => x.id);
-        const firstToSecond = snapshots.map((snapshot) => {
-            const first = snapshot.values?.[firstStageId];
-            const second = snapshot.values?.[secondStageId];
-            const ratio = safeRatio(second, first);
+    void snapshots;
+    const sortedRecords = [...records].sort((a, b) => a.timestamp - b.timestamp);
+    const stages = getSortedFunnelStages();
+    const relationPairs = getStageRelationPairsForConversion(stages);
+    const palette = ["#64a7ff", "#ff3c7d", "#6fdc8c", "#f5c35b", "#ac86ff", "#57d0d8", "#ff9966"];
+    const pointTimestamps = sortedRecords.map((x) => x.timestamp);
+    const pointRecordIds = sortedRecords.map((x) => x.id);
+    const datasets = relationPairs.map((pair, idx) => ({
+        label: `${pair.from.name} → ${pair.to.name}`,
+        data: sortedRecords.map((record) => {
+            const fromVal = getRecordStageValue(record, pair.from.id);
+            const toVal = getRecordStageValue(record, pair.to.id);
+            const ratio = safeRatio(toVal, fromVal);
             return Number.isFinite(ratio) ? ratio * 100 : null;
-        });
-        const firstToLast = snapshots.map((snapshot) => {
-            const first = snapshot.values?.[firstStageId];
-            const last = snapshot.values?.[lastStageId];
-            const ratio = safeRatio(last, first);
-            return Number.isFinite(ratio) ? ratio * 100 : null;
-        });
-        datasets = [
-            {
-                label: `${firstName} → ${secondName}`,
-                data: firstToSecond,
-                borderColor: "#64a7ff",
-                backgroundColor: "rgba(100, 167, 255, 0.2)",
-                pointBackgroundColor: "#64a7ff",
-                pointRadius: 2,
-                pointHoverRadius: 4,
-                pointHitRadius: 12,
-                borderWidth: 2.4,
-                tension: 0.3,
-                spanGaps: true,
-            },
-        ];
-        if (lastStageId !== secondStageId) {
-            datasets.push({
-                label: `${firstName} → ${lastName}`,
-                data: firstToLast,
-                borderColor: "#ff3c7d",
-                backgroundColor: "rgba(255, 60, 125, 0.2)",
-                pointBackgroundColor: "#ff3c7d",
-                pointRadius: 2,
-                pointHoverRadius: 4,
-                pointHitRadius: 12,
-                borderWidth: 2.4,
-                tension: 0.3,
-                spanGaps: true,
-            });
-        }
-    }
-    else {
-        const sortedRecords = [...records].sort((a, b) => a.timestamp - b.timestamp);
-        const stageNames = getDashboardStages();
-        pointTimestamps = sortedRecords.map((x) => x.timestamp);
-        pointRecordIds = sortedRecords.map((x) => x.id);
-        datasets = [
-            {
-                label: `${stageNames.first} → ${stageNames.second}`,
-                data: sortedRecords.map((record) => {
-                    const ratio = safeRatio(record.line, record.threads);
-                    return Number.isFinite(ratio) ? ratio * 100 : null;
-                }),
-                borderColor: "#64a7ff",
-                backgroundColor: "rgba(100, 167, 255, 0.2)",
-                pointBackgroundColor: "#64a7ff",
-                pointRadius: 2,
-                pointHoverRadius: 4,
-                pointHitRadius: 12,
-                borderWidth: 2.4,
-                tension: 0.3,
-                spanGaps: true,
-            },
-        ];
-    }
+        }),
+        borderColor: palette[idx % palette.length],
+        backgroundColor: `${palette[idx % palette.length]}33`,
+        pointBackgroundColor: palette[idx % palette.length],
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        pointHitRadius: 12,
+        borderWidth: 2.4,
+        tension: 0.3,
+        spanGaps: true,
+    }));
     const hasAnyValidPoint = datasets.some((dataset) => {
         const points = dataset.data || [];
         return points.some((v) => Number.isFinite(v));
@@ -1609,6 +1590,36 @@ function renderConversionTrendChart(snapshots, records) {
             },
         },
     });
+}
+function getStageRelationPairsForConversion(stages) {
+    const byId = new Map(stages.map((x) => [x.id, x]));
+    const pairs = [];
+    for (const from of stages) {
+        for (const nextId of from.nextIds || []) {
+            const to = byId.get(nextId);
+            if (!to)
+                continue;
+            pairs.push({ from, to });
+        }
+    }
+    if (pairs.length)
+        return pairs;
+    const sorted = [...stages].sort((a, b) => a.order - b.order);
+    for (let i = 0; i < sorted.length - 1; i += 1) {
+        pairs.push({ from: sorted[i], to: sorted[i + 1] });
+    }
+    return pairs;
+}
+function getRecordStageValue(record, stageId) {
+    const fromMap = record.stageValues?.[stageId];
+    if (Number.isFinite(fromMap))
+        return Number(fromMap);
+    const basic = getDashboardStages();
+    if (stageId === basic.firstId && Number.isFinite(record.threads))
+        return Number(record.threads);
+    if (stageId === basic.secondId && Number.isFinite(record.line))
+        return Number(record.line);
+    return null;
 }
 function drawEmptyChartMessage(ctx, canvas, text) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1934,12 +1945,22 @@ function getAllFunnelStages() {
     return new Promise((resolve, reject) => {
         const req = tx(FUNNEL_STAGE_STORE_NAME, "readonly").getAll();
         req.onsuccess = () => {
-            const rows = (req.result || []);
+            const rows = ensureFunnelStageDefaults((req.result || []));
             rows.sort((a, b) => a.order - b.order);
             resolve(rows);
         };
         req.onerror = () => reject(req.error);
     });
+}
+function ensureFunnelStageDefaults(items) {
+    return items.map((item, idx) => ({
+        ...item,
+        layer: Number.isFinite(item.layer) ? Math.max(1, Number(item.layer)) : idx + 1,
+        x: Number.isFinite(item.x) ? Math.max(0, Number(item.x)) : 24 + ((idx % 4) * 260),
+        y: Number.isFinite(item.y) ? Math.max(0, Number(item.y)) : 24 + (Math.floor(idx / 4) * 120),
+        prevIds: Array.isArray(item.prevIds) ? item.prevIds.filter((x) => !!x) : [],
+        nextIds: Array.isArray(item.nextIds) ? item.nextIds.filter((x) => !!x) : [],
+    }));
 }
 function putFunnelSnapshot(item) {
     return new Promise((resolve, reject) => {
@@ -2278,6 +2299,18 @@ function normalizeImportedFunnelStages(rows) {
     if (!Array.isArray(rows))
         return [];
     const now = new Date().toISOString();
+    const parseRelationIds = (raw) => {
+        if (Array.isArray(raw)) {
+            return raw.map((x) => String(x || "").trim()).filter((x) => !!x);
+        }
+        if (typeof raw === "string") {
+            return raw
+                .split(",")
+                .map((x) => x.trim())
+                .filter((x) => !!x);
+        }
+        return [];
+    };
     return rows
         .map((rowRaw, idx) => {
         const row = rowRaw;
@@ -2285,10 +2318,17 @@ function normalizeImportedFunnelStages(rows) {
         if (!name)
             return null;
         const idRaw = (row?.id || "").toString().trim();
+        const prevIds = parseRelationIds(row?.prev_ids ?? row?.prevIds);
+        const nextIds = parseRelationIds(row?.next_ids ?? row?.nextIds);
         return {
             id: idRaw || `stage-${Date.now()}-${idx}`,
             name: name.slice(0, 40),
             order: Number.isFinite(row?.order) ? Number(row.order) : idx,
+            layer: Number.isFinite(row?.layer) ? Math.max(1, Number(row.layer)) : idx + 1,
+            x: Number.isFinite(row?.x) ? Math.max(0, Number(row.x)) : 24 + ((idx % 4) * 260),
+            y: Number.isFinite(row?.y) ? Math.max(0, Number(row.y)) : 24 + (Math.floor(idx / 4) * 120),
+            prevIds,
+            nextIds,
             createdAt: now,
             updatedAt: now,
         };
@@ -2349,6 +2389,11 @@ function inferFunnelStagesFromDashboardRows(rows) {
             id: `stage-${Date.now()}-1`,
             name: stage1Name.slice(0, 40),
             order: 0,
+            layer: 1,
+            x: 24,
+            y: 24,
+            prevIds: [],
+            nextIds: [],
             createdAt: now,
             updatedAt: now,
         },
@@ -2356,6 +2401,11 @@ function inferFunnelStagesFromDashboardRows(rows) {
             id: `stage-${Date.now()}-2`,
             name: stage2Name.slice(0, 40),
             order: 1,
+            layer: 2,
+            x: 300,
+            y: 24,
+            prevIds: [],
+            nextIds: [],
             createdAt: now,
             updatedAt: now,
         },
@@ -2806,16 +2856,16 @@ function toKpiMetricKey(value) {
 }
 function getKpiMetricLabel(metricKey, stageNames = getDashboardStages()) {
     if (metricKey === "stage1_latest")
-        return `第一層最新人數（${stageNames.first}）`;
+        return `主要平台最新人數（${stageNames.first}）`;
     if (metricKey === "stage2_latest")
-        return `第二層最新人數（${stageNames.second}）`;
+        return `次要平台最新人數（${stageNames.second}）`;
     if (metricKey === "latest_conversion")
         return "最新轉換率";
     if (metricKey === "avg_conversion")
         return "區間平均轉換率";
     if (metricKey === "stage1_growth")
-        return `第一層增長率（${stageNames.first}）`;
-    return `第二層增長率（${stageNames.second}）`;
+        return `主要平台增長率（${stageNames.first}）`;
+    return `次要平台增長率（${stageNames.second}）`;
 }
 function getKpiMetricValue(metricKey, reportKpi, records) {
     const sorted = [...records].sort((a, b) => a.timestamp - b.timestamp);
@@ -2949,8 +2999,8 @@ function setDefaultFunnelDateTime() {
 async function seedDefaultFunnelStages() {
     const now = new Date().toISOString();
     const defaults = [
-        { id: `stage-${Date.now()}-1`, name: "平台A", order: 0, createdAt: now, updatedAt: now },
-        { id: `stage-${Date.now()}-2`, name: "平台B", order: 1, createdAt: now, updatedAt: now },
+        { id: `stage-${Date.now()}-1`, name: "平台A", order: 0, layer: 1, x: 24, y: 24, prevIds: [], nextIds: [], createdAt: now, updatedAt: now },
+        { id: `stage-${Date.now()}-2`, name: "平台B", order: 1, layer: 1, x: 300, y: 24, prevIds: [], nextIds: [], createdAt: now, updatedAt: now },
     ];
     for (const stage of defaults) {
         await putFunnelStage(stage);
@@ -2967,6 +3017,11 @@ async function onAddFunnelStage() {
         id: `stage-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         name: name.slice(0, 40),
         order: state.funnelStages.length,
+        layer: 1,
+        x: 24 + ((state.funnelStages.length % 4) * 260),
+        y: 24 + (Math.floor(state.funnelStages.length / 4) * 120),
+        prevIds: [],
+        nextIds: [],
         createdAt: now,
         updatedAt: now,
     };
@@ -2977,6 +3032,8 @@ async function onAddFunnelStage() {
     render();
 }
 async function onFunnelStageListClick(event) {
+    if (Date.now() - lastFunnelDragEndedAt < 160)
+        return;
     const target = event.target;
     if (!(target instanceof HTMLButtonElement))
         return;
@@ -2987,12 +3044,12 @@ async function onFunnelStageListClick(event) {
         const stage = state.funnelStages.find((x) => x.id === stageId);
         if (!stage)
             return;
-        const nextName = window.prompt("請輸入新的階層名稱", stage.name || "");
+        const nextName = window.prompt("請輸入新的平台名稱", stage.name || "");
         if (nextName == null)
             return;
         const name = nextName.trim().slice(0, 40);
         if (!name) {
-            alert("階層名稱不能為空");
+            alert("平台名稱不能為空");
             return;
         }
         await putFunnelStage({
@@ -3032,7 +3089,7 @@ async function onFunnelStageListClick(event) {
 async function onSaveFunnelSnapshot(event) {
     event.preventDefault();
     if (state.funnelStages.length < 2) {
-        alert("請至少建立兩個平台階層，才能做漏斗分析。");
+        alert("請至少建立兩個平台，才能做漏斗分析。");
         return;
     }
     const parsed = parseDateTimeLocalInput(els.funnelDatetimeInput.value);
@@ -3040,12 +3097,16 @@ async function onSaveFunnelSnapshot(event) {
         alert("請選擇有效的日期時間");
         return;
     }
+    const latestSnapshot = [...state.funnelSnapshots]
+        .filter((x) => !state.funnelEditingId || x.id !== state.funnelEditingId)
+        .sort((a, b) => b.timestamp - a.timestamp)[0];
     const values = {};
     for (const stage of state.funnelStages) {
         const input = els.funnelStageInputs.querySelector(`input[data-stage-id="${stage.id}"]`);
         const raw = input?.value.trim() || "";
         if (!raw) {
-            values[stage.id] = null;
+            const latestValue = latestSnapshot?.values?.[stage.id];
+            values[stage.id] = Number.isFinite(latestValue) ? Math.floor(Number(latestValue)) : null;
             continue;
         }
         const n = Math.floor(Number(raw));
@@ -3056,13 +3117,15 @@ async function onSaveFunnelSnapshot(event) {
         values[stage.id] = n;
     }
     const snapshot = {
-        id: Date.now() + Math.floor(Math.random() * 1000),
+        id: state.funnelEditingId || (Date.now() + Math.floor(Math.random() * 1000)),
         timestamp: parsed.getTime(),
         datetime: formatDisplayDateTime(parsed),
         values,
         note: els.funnelNoteInput.value.trim().slice(0, 80),
         noteLineEnabled: (els.funnelNoteInput.value || "").trim().length > 0,
-        createdAt: new Date().toISOString(),
+        createdAt: state.funnelEditingId
+            ? (state.funnelSnapshots.find((x) => x.id === state.funnelEditingId)?.createdAt || new Date().toISOString())
+            : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
     };
     await putFunnelSnapshot(snapshot);
@@ -3072,8 +3135,30 @@ async function onSaveFunnelSnapshot(event) {
     render();
 }
 function resetFunnelSnapshotForm() {
+    state.funnelEditingId = null;
     els.funnelSnapshotForm.reset();
+    els.saveFunnelSnapshotBtn.textContent = "儲存快照";
+    els.resetFunnelSnapshotBtn.textContent = "清空";
     setDefaultFunnelDateTime();
+}
+function startEditFunnelSnapshot(id) {
+    const snapshot = state.funnelSnapshots.find((x) => x.id === id);
+    if (!snapshot)
+        return;
+    goToFunnelSection();
+    state.funnelEditingId = id;
+    els.saveFunnelSnapshotBtn.textContent = "更新快照";
+    els.resetFunnelSnapshotBtn.textContent = "取消編輯";
+    els.funnelDatetimeInput.value = formatDateTimeLocalValue(new Date(snapshot.timestamp));
+    for (const stage of getSortedFunnelStages()) {
+        const input = els.funnelStageInputs.querySelector(`input[data-stage-id="${stage.id}"]`);
+        if (!input)
+            continue;
+        const val = snapshot.values?.[stage.id];
+        input.value = Number.isFinite(val) ? String(val) : "";
+    }
+    els.funnelNoteInput.value = snapshot.note || "";
+    els.funnelDatetimeInput.focus();
 }
 async function onSaveKpiItem(event) {
     event.preventDefault();
@@ -3171,20 +3256,39 @@ function renderContentTable(items) {
 function renderFunnelStages() {
     els.funnelStageList.innerHTML = "";
     els.funnelStageInputs.innerHTML = "";
-    const sorted = [...state.funnelStages].sort((a, b) => a.order - b.order);
+    els.funnelZoomLabel.textContent = `${Math.round(funnelCanvasZoom * 100)}%`;
+    renderFunnelLinkModeUi();
+    const sorted = getSortedFunnelStages();
+    els.funnelStageList.style.height = `${FUNNEL_CANVAS_MIN_HEIGHT * funnelCanvasZoom}px`;
     if (!sorted.length) {
         const empty = document.createElement("p");
         empty.className = "empty-text";
-        empty.textContent = "尚未設定平台階層";
+        empty.textContent = "尚未設定平台";
         els.funnelStageList.appendChild(empty);
+        scheduleDrawFunnelGraphEdges();
         return;
     }
-    sorted.forEach((stage, idx) => {
+    const maxY = Math.max(...sorted.map((x) => Number(x.y) || 0), 0);
+    const logicalHeight = Math.max(FUNNEL_CANVAS_MIN_HEIGHT, maxY + FUNNEL_CARD_HEIGHT + 24);
+    els.funnelStageList.style.height = `${Math.max(FUNNEL_CANVAS_MIN_HEIGHT, logicalHeight * funnelCanvasZoom)}px`;
+    let stageIndex = 0;
+    for (const stage of sorted) {
+        stageIndex += 1;
         const tag = document.createElement("div");
         tag.className = "funnel-stage-chip";
-        tag.draggable = true;
+        if (state.linkModeEnabled && state.linkModeFromStageId === stage.id) {
+            tag.classList.add("is-link-source");
+        }
         tag.dataset.stageId = stage.id;
-        tag.innerHTML = `<span>${idx + 1}. ${escapeHtml(stage.name)}</span>`;
+        const x = Math.max(0, Math.floor(Number(stage.x) || 0));
+        const y = Math.max(0, Math.floor(Number(stage.y) || 0));
+        tag.style.left = `${Math.floor(x * funnelCanvasZoom)}px`;
+        tag.style.top = `${Math.floor(y * funnelCanvasZoom)}px`;
+        tag.style.transform = `scale(${funnelCanvasZoom})`;
+        tag.style.transformOrigin = "top left";
+        const prevNames = (stage.prevIds || []).map((id) => sorted.find((x) => x.id === id)?.name).filter((x) => !!x).join("、") || "-";
+        const nextNames = (stage.nextIds || []).map((id) => sorted.find((x) => x.id === id)?.name).filter((x) => !!x).join("、") || "-";
+        tag.innerHTML = `<span>${stageIndex}. ${escapeHtml(stage.name)}</span><small>前置：${escapeHtml(prevNames)}｜後置：${escapeHtml(nextNames)}</small>`;
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "danger";
@@ -3206,61 +3310,299 @@ function renderFunnelStages() {
         const label = document.createElement("label");
         label.innerHTML = `${stage.name}<input type="number" min="0" step="1" data-stage-id="${stage.id}" placeholder="輸入人數" />`;
         els.funnelStageInputs.appendChild(label);
+    }
+    scheduleDrawFunnelGraphEdges();
+}
+function renderFunnelLinkModeUi() {
+    els.toggleLinkModeBtn.textContent = `連線模式：${state.linkModeEnabled ? "開啟" : "關閉"}`;
+    els.toggleLinkModeBtn.classList.toggle("active", state.linkModeEnabled);
+    if (!state.linkModeEnabled) {
+        els.linkModeStatus.textContent = "提示：開啟後，依序點兩個節點建立/取消箭頭（禁止循環關聯）";
+        return;
+    }
+    if (!state.linkModeFromStageId) {
+        els.linkModeStatus.textContent = "已開啟：請先點第一個節點（起點），重做可刪除關聯";
+        return;
+    }
+    const from = state.funnelStages.find((x) => x.id === state.linkModeFromStageId);
+    els.linkModeStatus.textContent = `起點：${from?.name || "-"}，請再點目標節點（禁止 A→B→A）`;
+}
+function setFunnelCanvasZoom(next) {
+    const zoom = Math.min(FUNNEL_ZOOM_MAX, Math.max(FUNNEL_ZOOM_MIN, Number.isFinite(next) ? next : 1));
+    funnelCanvasZoom = Math.round(zoom * 100) / 100;
+    els.funnelZoomLabel.textContent = `${Math.round(funnelCanvasZoom * 100)}%`;
+    renderFunnelStages();
+}
+function onFunnelCanvasWheel(event) {
+    if (!(event.ctrlKey || event.metaKey || event.altKey))
+        return;
+    event.preventDefault();
+    const delta = event.deltaY < 0 ? 0.08 : -0.08;
+    setFunnelCanvasZoom(funnelCanvasZoom + delta);
+}
+function scheduleDrawFunnelGraphEdges() {
+    if (isFunnelDrawScheduled)
+        return;
+    isFunnelDrawScheduled = true;
+    window.requestAnimationFrame(() => {
+        isFunnelDrawScheduled = false;
+        drawFunnelGraphEdges();
     });
 }
-function onFunnelStageDragStart(event) {
-    const target = event.target?.closest(".funnel-stage-chip");
-    if (!target)
+function drawFunnelGraphEdges() {
+    const svg = els.funnelGraphSvg;
+    const container = els.funnelStageList;
+    if (!svg || !container)
         return;
-    const stageId = target.dataset.stageId || "";
-    if (!stageId)
-        return;
-    draggingFunnelStageId = stageId;
-    target.classList.add("is-dragging");
-    if (event.dataTransfer) {
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", stageId);
+    const containerRect = container.getBoundingClientRect();
+    let maxRight = container.clientWidth;
+    let maxBottom = container.clientHeight;
+    container.querySelectorAll(".funnel-stage-chip").forEach((node) => {
+        const rect = node.getBoundingClientRect();
+        maxRight = Math.max(maxRight, rect.right - containerRect.left + 20);
+        maxBottom = Math.max(maxBottom, rect.bottom - containerRect.top + 20);
+    });
+    const width = Math.max(1, Math.ceil(maxRight));
+    const height = Math.max(1, Math.ceil(maxBottom));
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.setAttribute("width", String(width));
+    svg.setAttribute("height", String(height));
+    svg.innerHTML = "";
+    const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+    marker.setAttribute("id", "funnelArrowHead");
+    marker.setAttribute("markerWidth", "7");
+    marker.setAttribute("markerHeight", "7");
+    marker.setAttribute("refX", "6");
+    marker.setAttribute("refY", "3.5");
+    marker.setAttribute("orient", "auto");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M0,0 L7,3.5 L0,7 Z");
+    path.setAttribute("fill", "#7fb3ff");
+    marker.appendChild(path);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+    const nodeMap = new Map();
+    container.querySelectorAll(".funnel-stage-chip").forEach((node) => {
+        const id = node.dataset.stageId || "";
+        if (!id)
+            return;
+        const rect = node.getBoundingClientRect();
+        nodeMap.set(id, {
+            left: rect.left - containerRect.left,
+            top: rect.top - containerRect.top,
+            width: rect.width,
+            height: rect.height,
+        });
+    });
+    for (const stage of getSortedFunnelStages()) {
+        const fromRect = nodeMap.get(stage.id);
+        if (!fromRect)
+            continue;
+        for (const nextId of stage.nextIds || []) {
+            const toRect = nodeMap.get(nextId);
+            if (!toRect)
+                continue;
+            const x1 = fromRect.left + fromRect.width;
+            const y1 = fromRect.top + fromRect.height * 0.5;
+            const x2 = toRect.left;
+            const y2 = toRect.top + toRect.height * 0.5;
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", `${x1}`);
+            line.setAttribute("y1", `${y1}`);
+            line.setAttribute("x2", `${x2}`);
+            line.setAttribute("y2", `${y2}`);
+            line.setAttribute("fill", "none");
+            line.setAttribute("stroke", "#7fb3ff");
+            line.setAttribute("stroke-opacity", "0.92");
+            line.setAttribute("stroke-width", "1.4");
+            line.setAttribute("marker-end", "url(#funnelArrowHead)");
+            line.setAttribute("pointer-events", "stroke");
+            line.setAttribute("data-from", stage.id);
+            line.setAttribute("data-to", nextId);
+            line.style.cursor = "pointer";
+            svg.appendChild(line);
+            const startDot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            startDot.setAttribute("cx", `${x1}`);
+            startDot.setAttribute("cy", `${y1}`);
+            startDot.setAttribute("r", "2.2");
+            startDot.setAttribute("fill", "#7fb3ff");
+            startDot.setAttribute("pointer-events", "none");
+            svg.appendChild(startDot);
+            const endDot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            endDot.setAttribute("cx", `${x2}`);
+            endDot.setAttribute("cy", `${y2}`);
+            endDot.setAttribute("r", "2.2");
+            endDot.setAttribute("fill", "#7fb3ff");
+            endDot.setAttribute("pointer-events", "none");
+            svg.appendChild(endDot);
+        }
     }
 }
-function onFunnelStageDragOver(event) {
-    if (!draggingFunnelStageId)
+async function onSelectStageForLink(stageId) {
+    if (!state.linkModeEnabled)
         return;
-    event.preventDefault();
-    els.funnelStageList.querySelectorAll(".funnel-stage-chip").forEach((node) => node.classList.remove("is-drag-over"));
-    const target = event.target?.closest(".funnel-stage-chip");
-    if (!target)
+    if (!state.linkModeFromStageId) {
+        state.linkModeFromStageId = stageId;
+        renderFunnelStages();
         return;
-    target.classList.add("is-drag-over");
-}
-async function onFunnelStageDrop(event) {
-    if (!draggingFunnelStageId)
-        return;
-    event.preventDefault();
-    const target = event.target?.closest(".funnel-stage-chip");
-    if (!target)
-        return;
-    const targetId = target.dataset.stageId || "";
-    if (!targetId || targetId === draggingFunnelStageId)
-        return;
-    const stages = [...state.funnelStages].sort((a, b) => a.order - b.order);
-    const from = stages.findIndex((x) => x.id === draggingFunnelStageId);
-    const to = stages.findIndex((x) => x.id === targetId);
-    if (from < 0 || to < 0)
-        return;
-    const moved = stages.splice(from, 1)[0];
-    stages.splice(to, 0, moved);
-    for (let i = 0; i < stages.length; i += 1) {
-        await putFunnelStage({ ...stages[i], order: i, updatedAt: new Date().toISOString() });
     }
+    if (state.linkModeFromStageId === stageId) {
+        state.linkModeFromStageId = "";
+        renderFunnelStages();
+        return;
+    }
+    const from = state.funnelStages.find((x) => x.id === state.linkModeFromStageId);
+    const to = state.funnelStages.find((x) => x.id === stageId);
+    if (!from || !to)
+        return;
+    const hasEdge = (from.nextIds || []).includes(to.id);
+    if (!hasEdge && wouldCreateCycle(to.id, from.id, state.funnelStages)) {
+        alert("不可建立循環關聯（例如 A→B→A）。請改成單向流程。");
+        renderFunnelStages();
+        return;
+    }
+    await setStageRelationLink(from, to, !hasEdge);
+    state.funnelStages = await getAllFunnelStages();
+    state.linkModeFromStageId = stageId;
+    markDataEdited();
+    render();
+}
+async function onFunnelEdgeClick(event) {
+    const target = event.target;
+    const line = target?.closest?.("line[data-from][data-to]");
+    if (!line)
+        return;
+    const fromId = line.getAttribute("data-from") || "";
+    const toId = line.getAttribute("data-to") || "";
+    if (!fromId || !toId)
+        return;
+    const from = state.funnelStages.find((x) => x.id === fromId);
+    const to = state.funnelStages.find((x) => x.id === toId);
+    if (!from || !to)
+        return;
+    await setStageRelationLink(from, to, false);
     state.funnelStages = await getAllFunnelStages();
     markDataEdited();
     render();
 }
-function onFunnelStageDragEnd() {
-    draggingFunnelStageId = "";
-    els.funnelStageList.querySelectorAll(".funnel-stage-chip").forEach((node) => {
-        node.classList.remove("is-drag-over", "is-dragging");
+async function setStageRelationLink(from, to, linked) {
+    const nextIds = linked
+        ? Array.from(new Set([...(from.nextIds || []), to.id]))
+        : (from.nextIds || []).filter((id) => id !== to.id);
+    const prevIds = linked
+        ? Array.from(new Set([...(to.prevIds || []), from.id]))
+        : (to.prevIds || []).filter((id) => id !== from.id);
+    await putFunnelStage({ ...from, nextIds, updatedAt: new Date().toISOString() });
+    await putFunnelStage({ ...to, prevIds, updatedAt: new Date().toISOString() });
+}
+function wouldCreateCycle(startId, targetId, stages) {
+    if (!startId || !targetId)
+        return false;
+    if (startId === targetId)
+        return true;
+    const byId = new Map(stages.map((x) => [x.id, x]));
+    const stack = [startId];
+    const visited = new Set();
+    while (stack.length) {
+        const current = stack.pop() || "";
+        if (!current || visited.has(current))
+            continue;
+        if (current === targetId)
+            return true;
+        visited.add(current);
+        const stage = byId.get(current);
+        for (const nextId of stage?.nextIds || []) {
+            if (!visited.has(nextId)) {
+                stack.push(nextId);
+            }
+        }
+    }
+    return false;
+}
+function onFunnelStageCanvasMouseDown(event) {
+    if (event.button !== 0)
+        return;
+    const target = event.target;
+    if (!target)
+        return;
+    if (target.closest("button"))
+        return;
+    const chip = target.closest(".funnel-stage-chip");
+    if (!chip)
+        return;
+    const stageId = chip.dataset.stageId || "";
+    if (!stageId)
+        return;
+    if (state.linkModeEnabled) {
+        void onSelectStageForLink(stageId);
+        return;
+    }
+    const chipRect = chip.getBoundingClientRect();
+    funnelDragState = {
+        stageId,
+        startX: chip.offsetLeft / funnelCanvasZoom,
+        startY: chip.offsetTop / funnelCanvasZoom,
+        pointerOffsetX: event.clientX - chipRect.left,
+        pointerOffsetY: event.clientY - chipRect.top,
+        moved: false,
+    };
+    chip.classList.add("is-dragging");
+    event.preventDefault();
+}
+function onFunnelStageCanvasMouseMove(event) {
+    if (!funnelDragState)
+        return;
+    const chip = els.funnelStageList.querySelector(`.funnel-stage-chip[data-stage-id="${funnelDragState.stageId}"]`);
+    if (!chip)
+        return;
+    const canvasRect = els.funnelStageList.getBoundingClientRect();
+    const cardWidth = FUNNEL_CARD_WIDTH * funnelCanvasZoom;
+    const cardHeight = FUNNEL_CARD_HEIGHT * funnelCanvasZoom;
+    const maxXDisplay = Math.max(0, els.funnelStageList.clientWidth - cardWidth);
+    const maxYDisplay = Math.max(0, els.funnelStageList.clientHeight - cardHeight);
+    const nextXDisplay = Math.min(maxXDisplay, Math.max(0, event.clientX - canvasRect.left - funnelDragState.pointerOffsetX));
+    const nextYDisplay = Math.min(maxYDisplay, Math.max(0, event.clientY - canvasRect.top - funnelDragState.pointerOffsetY));
+    const nextX = nextXDisplay / funnelCanvasZoom;
+    const nextY = nextYDisplay / funnelCanvasZoom;
+    chip.style.left = `${Math.round(nextX * funnelCanvasZoom)}px`;
+    chip.style.top = `${Math.round(nextY * funnelCanvasZoom)}px`;
+    if (!funnelDragState.moved) {
+        const movedX = Math.abs(nextX - funnelDragState.startX);
+        const movedY = Math.abs(nextY - funnelDragState.startY);
+        if (movedX > 2 || movedY > 2) {
+            funnelDragState.moved = true;
+        }
+    }
+    scheduleDrawFunnelGraphEdges();
+    event.preventDefault();
+}
+async function onFunnelStageCanvasMouseUp() {
+    if (!funnelDragState)
+        return;
+    const drag = funnelDragState;
+    funnelDragState = null;
+    const chip = els.funnelStageList.querySelector(`.funnel-stage-chip[data-stage-id="${drag.stageId}"]`);
+    chip?.classList.remove("is-dragging");
+    if (!drag.moved)
+        return;
+    lastFunnelDragEndedAt = Date.now();
+    const nextX = Math.max(0, Math.floor((chip?.offsetLeft || 0) / funnelCanvasZoom));
+    const nextY = Math.max(0, Math.floor((chip?.offsetTop || 0) / funnelCanvasZoom));
+    const stage = state.funnelStages.find((x) => x.id === drag.stageId);
+    if (!stage)
+        return;
+    if (stage.x === nextX && stage.y === nextY)
+        return;
+    await putFunnelStage({
+        ...stage,
+        x: nextX,
+        y: nextY,
+        updatedAt: new Date().toISOString(),
     });
+    state.funnelStages = await getAllFunnelStages();
+    markDataEdited();
+    render();
 }
 function renderFunnelSummary() {
     els.funnelSummaryBody.innerHTML = "";
@@ -3273,13 +3615,25 @@ function renderFunnelSummary() {
         els.funnelSummaryBody.appendChild(p);
         return;
     }
-    for (let i = 0; i < stages.length - 1; i += 1) {
-        const a = stages[i];
-        const b = stages[i + 1];
-        const ratio = safeRatio(latest.values[b.id], latest.values[a.id]);
+    const relationPairs = [];
+    for (const from of stages) {
+        const targets = (from.nextIds || [])
+            .map((id) => stages.find((x) => x.id === id))
+            .filter((x) => !!x);
+        for (const to of targets) {
+            relationPairs.push({ from, to });
+        }
+    }
+    if (!relationPairs.length) {
+        for (let i = 0; i < stages.length - 1; i += 1) {
+            relationPairs.push({ from: stages[i], to: stages[i + 1] });
+        }
+    }
+    for (const pair of relationPairs) {
+        const ratio = safeRatio(latest.values[pair.to.id], latest.values[pair.from.id]);
         const item = document.createElement("article");
         item.className = "funnel-metric";
-        item.innerHTML = `<p>${escapeHtml(a.name)} → ${escapeHtml(b.name)}</p><h3>${formatPercent(ratio)}</h3>`;
+        item.innerHTML = `<p>${escapeHtml(pair.from.name)} → ${escapeHtml(pair.to.name)}</p><h3>${formatPercent(ratio)}</h3>`;
         els.funnelSummaryBody.appendChild(item);
     }
     const overall = safeRatio(latest.values[stages[stages.length - 1].id], latest.values[stages[0].id]);
@@ -3604,7 +3958,6 @@ function applyRoleIdStateToUi() {
 function applySearchStateToUi() {
     els.recordSearchInput.value = state.recordSearch;
     els.contentSearchInput.value = state.contentSearch;
-    els.kpiSearchInput.value = state.kpiSearch;
 }
 function applyTrendChartStateToUi() {
     els.trendModeSelect.value = state.trendMode;
@@ -3635,8 +3988,7 @@ function hasUnsavedChanges() {
     if (!state.records.length &&
         !state.contentItems.length &&
         !state.funnelStages.length &&
-        !state.funnelSnapshots.length &&
-        !state.kpiItems.length) {
+        !state.funnelSnapshots.length) {
         return false;
     }
     if (!state.lastEditedAt)
@@ -3652,7 +4004,7 @@ function confirmTwice(message1, message2) {
         return false;
     return true;
 }
-function computeLastEditedAtFromData(records, contentItems, funnelStages, funnelSnapshots, kpiItems) {
+function computeLastEditedAtFromData(records, contentItems, funnelStages, funnelSnapshots) {
     let maxIso = "";
     for (const r of records) {
         const iso = r.updatedAt || r.createdAt || "";
@@ -3676,13 +4028,6 @@ function computeLastEditedAtFromData(records, contentItems, funnelStages, funnel
             maxIso = iso;
     }
     for (const x of funnelSnapshots) {
-        const iso = x.updatedAt || x.createdAt || "";
-        if (!iso)
-            continue;
-        if (!maxIso || iso > maxIso)
-            maxIso = iso;
-    }
-    for (const x of kpiItems) {
         const iso = x.updatedAt || x.createdAt || "";
         if (!iso)
             continue;
